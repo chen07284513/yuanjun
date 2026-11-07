@@ -1,0 +1,44 @@
+name: research-lhb
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "test 或 full"
+        default: "test"
+      start:
+        default: "2024-01-02"
+      end:
+        default: "2024-01-10"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: 抓取龙虎榜
+        run: python -u research/fetch_lhb.py ${{ inputs.mode }} ${{ inputs.start }} ${{ inputs.end }}
+      - name: 保存到 research-data 分支
+        if: inputs.mode == 'full'
+        run: |
+          mkdir -p /tmp/out && cp research/data/*.csv.gz /tmp/out/
+          git config user.name "research-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch origin research-data 2>/dev/null; then
+            git checkout -B research-data origin/research-data
+          else
+            git checkout --orphan research-data
+            git rm -rf -q . || true
+          fi
+          cp /tmp/out/*.csv.gz .
+          git add *.csv.gz
+          git commit -m "lhb data ${{ inputs.start }}..${{ inputs.end }}" || true
+          git push origin research-data
