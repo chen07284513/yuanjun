@@ -125,9 +125,9 @@ def run(fetcher, out_dir, log=print, now=None):
     for c, (_, n) in kl.items():
         if n:
             names[c] = n
+    coverage = len(kl) / max(1, len(codes))
     # drop ST / delisting names
     kl = {c: v for c, v in kl.items() if "ST" not in names.get(c, "") and "退" not in names.get(c, "")}
-    coverage = len(kl) / max(1, len(codes))
     try:
         idx_bars = fetcher.index_kline()
     except Exception as e:  # noqa: BLE001
