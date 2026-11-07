@@ -257,6 +257,9 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
 if __name__ == "__main__":
     from fetch import LiveFetcher
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "docs", "data")
-    latest, _ = run(LiveFetcher(), out)
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+    # 盘中那次必须在 15:00 前出结果：最多抓 7 分钟数据
+    fetcher = LiveFetcher(deadline=420 if market_mode(now) == "intraday" else 1200)
+    latest, _ = run(fetcher, out, now=now)
     if latest["status"] != "ok" and latest["coverage"] < 0.3:
         sys.exit(1)

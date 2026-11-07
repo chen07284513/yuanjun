@@ -22,7 +22,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -41,7 +41,7 @@ jobs:
 
       - name: 选股并更新模拟盘
         if: github.event_name != 'push'
-        run: python picker/daily.py docs/data
+        run: python -u picker/daily.py docs/data
 
       - name: 保存数据
         if: github.event_name != 'push'

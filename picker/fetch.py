@@ -16,7 +16,7 @@ S = requests.Session()
 S.headers.update({"User-Agent": UA})
 
 
-def _get(url, params=None, referer=None, tries=2, timeout=10):
+def _get(url, params=None, referer=None, tries=2, timeout=6):
     last = None
     for i in range(tries):
         try:
@@ -89,8 +89,8 @@ def tx_kline(code, lmt=80):
 class LiveFetcher:
     """Fetch everything the daily run needs. Records which sources worked."""
 
-    def __init__(self, workers=12, lmt=80, log=print):
-        self.workers, self.lmt, self.log = workers, lmt, log
+    def __init__(self, workers=8, lmt=80, log=print, deadline=600):
+        self.workers, self.lmt, self.log, self.deadline = workers, lmt, log, deadline
         self.primary = "em"
         self.used = {"em": 0, "tx": 0, "fail": 0}
 
@@ -106,11 +106,13 @@ class LiveFetcher:
 
     def _one(self, code):
         order = ["em", "tx"] if self.primary == "em" else ["tx", "em"]
-        for src in order:
+        for n, src in enumerate(order):
             try:
                 bars, name = (em_kline if src == "em" else tx_kline)(code, self.lmt)
                 if bars:
                     self.used[src] += 1
+                    if n:
+                        self.chunk_fallback += 1
                     return code, bars, name
             except Exception:  # noqa: BLE001
                 pass
@@ -130,13 +132,26 @@ class LiveFetcher:
             self.primary = "tx"
         self.log(f"probe eastmoney {ok_em}/{len(probe)} -> primary {self.primary}")
         out = {}
+        t0 = time.time()
         with ThreadPoolExecutor(self.workers) as ex:
             for i in range(0, len(codes), 200):
+                self.chunk_fallback = 0
+                got = 0
                 for code, bars, name in ex.map(self._one, codes[i:i + 200]):
                     if bars:
                         out[code] = (bars, name)
+                        got += 1
+                el = time.time() - t0
+                self.log(f"  {min(i + 200, len(codes))}/{len(codes)} ok={len(out)} {el:.0f}s primary={self.primary} {self.used}")
                 if i == 0 and not out:
                     self.log("first 200 stocks all failed on both sources - giving up")
+                    break
+                # primary source struggling but the backup works -> switch for the rest of the run
+                if got and self.chunk_fallback > got // 2:
+                    self.primary = "tx" if self.primary == "em" else "em"
+                    self.log(f"  switching primary source to {self.primary}")
+                if el > self.deadline:
+                    self.log(f"deadline {self.deadline}s reached - stopping with what we have")
                     break
         self.log(f"klines fetched {len(out)}/{len(codes)} sources {self.used}")
         return out
