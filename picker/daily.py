@@ -104,8 +104,26 @@ def r(x, n=4):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), n)
 
 
-def run(fetcher, out_dir, log=print, now=None):
+def market_mode(now):
+    """'intraday' while A-shares are trading (Beijing 09:30-15:00 on weekdays), else 'close'."""
+    hm = now.hour * 100 + now.minute
+    return "intraday" if now.weekday() < 5 and 930 <= hm < 1500 else "close"
+
+
+def adj_factor(tr, A, t0, j, tpos):
+    """Prices are 前复权: if an ex-dividend happened after the signal, old prices get rescaled.
+    Return k so that (price stored at signal time) * k = price on today's scale."""
+    d0 = tpos.get(tr.get("d0"))
+    if d0 is not None and tr.get("stop"):
+        v = float(A["l"][d0, j])
+        if v > 0:
+            return v / tr["stop"]
+    return float(A["c"][t0, j]) / tr["entry"]  # older records: entry was that day's close
+
+
+def run(fetcher, out_dir, log=print, now=None, mode=None):
     now = now or dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+    mode = mode or market_mode(now)
     os.makedirs(out_dir, exist_ok=True)
     tpath = os.path.join(out_dir, "trades.json")
     book = load_json(tpath, {"meta": {}, "trades": {}})
@@ -180,14 +198,17 @@ def run(fetcher, out_dir, log=print, now=None):
             k = f"{code}|{cal[t]}"
             if k in book["trades"]:
                 continue
-            entry = float(A["c"][t, j])
+            entry = float(A["c"][t, j])  # intraday: the latest price at run time; after close: the close
+            backfill = t < T - 1 and not last_date
+            src = "补录" if backfill else ("盘中" if mode == "intraday" and t == T - 1 else "收盘")
             book["trades"][k] = dict(
                 code=code, name=names.get(code, ""), date=cal[t], entry=r(entry, 3), stop=r(stop, 3),
-                stop_ratio=stop / entry, tp=r(entry * (1 + TP), 3), streak=streak, dd=r(dd),
+                d0=cal[t - 2], src=src, entry_time=now.strftime("%H:%M") if src == "盘中" else None,
+                tp=r(entry * (1 + TP), 3), streak=streak, dd=r(dd),
                 amount_yi=r(A["a"][t, j] / 1e5, 2),
                 groups=[g for g, s in (("base", base), ("strict", strict)) if key in s],
                 badges=dict(emotion=bool(mkt[3][t]), first_hold=key in env_first, vol_shrink=key in env_vol),
-                backfill=t < T - 1 and not last_date, status="open")
+                backfill=backfill, status="open")
             new_keys.append(k)
         book["meta"]["last_date"] = asof
     log(f"new signals {len(new_keys)}")
@@ -200,17 +221,18 @@ def run(fetcher, out_dir, log=print, now=None):
         if t0 is None or j is None:
             tr["stale"] = True
             continue
-        entry_now = float(A["c"][t0, j])
-        stop_now = entry_now * tr["stop_ratio"]
-        te, px, why = simulate_exit(A["o"], A["h"], A["l"], A["c"], chg, lim, t0, j, stop_now, TP, H)
+        k_adj = adj_factor(tr, A, t0, j, tpos)
+        entry_now = tr["entry"] * k_adj
+        stop_now = tr["stop"] * k_adj
+        te, px, why = simulate_exit(A["o"], A["h"], A["l"], A["c"], chg, lim, t0, j, stop_now, TP, H, entry_now)
         held = int(np.sum(~np.isnan(A["c"][t0 + 1:te + 1, j]))) if te > t0 else 0
         tr["held"] = held
         tr.pop("stale", None)
         if why == 3:
-            tr.update(status="open", last=r(px * tr["entry"] / entry_now, 3), last_date=cal[te],
+            tr.update(status="open", last=r(px / k_adj, 3), last_date=cal[te],
                       ret=r(px / entry_now - 1))
         else:
-            tr.update(status="closed", exit_date=cal[te], exit=r(px * tr["entry"] / entry_now, 3),
+            tr.update(status="closed", exit_date=cal[te], exit=r(px / k_adj, 3),
                       reason={0: "到期", 1: "止损", 2: "止盈"}[why],
                       ret=r(px / entry_now - 1 - cost_rate(cal[te])))
 
@@ -219,7 +241,7 @@ def run(fetcher, out_dir, log=print, now=None):
     with open(os.path.join(HERE, "names.json"), "w", encoding="utf-8") as f:
         json.dump(names, f, ensure_ascii=False, separators=(",", ":"))
     latest = dict(
-        asof=asof, generated=now.strftime("%Y-%m-%d %H:%M"), status=status, notes=notes,
+        asof=asof, generated=now.strftime("%Y-%m-%d %H:%M"), mode=mode, status=status, notes=notes,
         coverage=r(coverage, 3), stocks=len(kl), universe_source=usrc, universe=UNIVERSE_DESC,
         sources=getattr(fetcher, "used", {}),
         market=dict(limit_ups=int(lu[-1]), index_above_ma20=bool(mkt[1][-1]) if idx_ok else None,

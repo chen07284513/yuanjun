@@ -2,7 +2,9 @@ name: daily-pick
 
 on:
   schedule:
-    - cron: "40 8 * * 1-5"   # 北京时间 16:40（A股收盘后），周一至周五
+    - cron: "38 6 * * 1-5"   # 北京时间 14:38 盘中选股（尾盘前出结果）
+    - cron: "46 6 * * 1-5"   # 北京时间 14:46 备份（第一次被 GitHub 延迟时补上）
+    - cron: "40 8 * * 1-5"   # 北京时间 16:40 收盘后更新模拟盘
   workflow_dispatch:          # 手动运行
   push:
     branches: [main]

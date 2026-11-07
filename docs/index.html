@@ -162,6 +162,7 @@ function renderToday() {
   const m = L.market || {};
   let h = "";
   (L.notes || []).forEach(n => h += `<div class="banner">${esc(n)}</div>`);
+  if (L.mode === "intraday") h += `<div class="banner info">盘中信号：用北京时间 ${esc((L.generated || "").slice(11))} 的价格计算。收盘前价格还会变，规则按这个价格在尾盘买入。</div>`;
   const yn = (v) => v == null ? `<span class="mute">未知</span>` : v ? `<span class="up">是</span>` : `<span class="down">否</span>`;
   h += `<div class="card"><div class="grid3">
       <div><b>${m.limit_ups ?? "—"}</b><span>当日涨停家数</span></div>
@@ -179,7 +180,7 @@ function renderToday() {
     h += `<div class="card empty">今天没有符合条件的股票。<br><span class="small">这很正常：援军战法的信号很不均匀，有时连续几周都没有。</span></div>`;
   }
   list.forEach(t => h += stockCard(t));
-  h += `<p class="small mute" style="margin:8px 4px">信号价 = 信号日收盘价（规则假设尾盘买入）。止损 = 跌破撤军线；止盈 = +8%；最多持有 5 个交易日。</p>`;
+  h += `<p class="small mute" style="margin:8px 4px">信号价 = 选股那一刻的价格（每个交易日约 14:40–14:50 运行），模拟盘按这个价格买入。止损 = 跌破撤军线；止盈 = +8%；最多持有 5 个交易日。</p>`;
   return h;
 }
 
@@ -198,9 +199,10 @@ function stockCard(t) {
       <span class="tag ${b.first_hold ? "ok" : "no"}">首板不破</span>
       <span class="tag ${b.vol_shrink ? "ok" : "no"}">缩量回调</span>
       ${t.backfill ? `<span class="tag bf">启动补录</span>` : ""}
+      ${t.src === "收盘" ? `<span class="tag bf">收盘后补算</span>` : ""}
     </div>
     <div class="kv">
-      <div><span>信号价</span><b>${num(t.entry)}</b></div>
+      <div><span>${t.src === "盘中" && t.entry_time ? "信号价 " + esc(t.entry_time) : "收盘价"}</span><b>${num(t.entry)}</b></div>
       <div><span>撤军线(止损)</span><b class="down">${num(t.stop)}</b><span class="down">${pct(stopDist)}</span></div>
       <div><span>止盈价</span><b class="up">${num(t.tp)}</b><span class="up">+8.0%</span></div>
     </div>
@@ -237,7 +239,7 @@ function renderPaper() {
       <div><b class="${cls(st.mean)}">${pct(st.mean, 2)}</b><span>平均每笔（已扣费）</span></div>
     </div>
     ${closed.length >= 2 ? curveSvg(closed) : ""}
-    <p class="small mute">从 app 启动那天起自动记录，按规则假设：信号日收盘买入，止损/止盈/满 5 天卖出。“启动补录”是第一次运行时用同样规则补记的前 10 个交易日。</p>
+    <p class="small mute">从 app 启动那天起自动记录，按规则假设：选股时（约 14:45）的价格买入，止损/止盈/满 5 天卖出。“启动补录”是第一次运行时用同样规则补记的前 10 个交易日（按收盘价）。</p>
   </div>`;
   const open = list.filter(t => t.status === "open").sort((a, b) => b.date.localeCompare(a.date));
   h += `<div class="h2">持有中 ${open.length}</div><div class="card list">`;
@@ -321,12 +323,15 @@ function renderAbout() {
     <li>最近 20 个交易日内出现过<b>2 连板</b>以上（龙头）</li>
     <li>之后见顶回落，从最高点回调 15%–40%</li>
     <li>回调中每天创新低，最后一个新低当天的最低价 = <b>撤军线</b></li>
-    <li>接下来两天<b>都没再跌破撤军线</b>，第二天收阳线 → 尾盘买入</li>
+    <li>接下来两天<b>都没再跌破撤军线</b>，第二天是阳线 → 尾盘买入</li>
     <li>买入价离撤军线不超过 10%，当天成交额 ≥ 1 亿，不是涨停（买不进）</li></ol>
     <b>严格版</b>另外要求：回调 20%–50%、大盘在 20 日线上且当天涨停 ≥ 60 家（情绪好）、撤军线不低于首个涨停板开盘价（首板不破）、回调期间缩量到连板时的 60% 以下。</div>
   <div class="card"><b>卖出规则（两版相同）</b><ul class="small">
     <li>跌破撤军线 → 止损</li><li>涨到 +8% → 止盈</li><li>否则第 5 个交易日收盘卖出</li></ul></div>
-  <div class="card"><b>什么时候更新</b><p class="small">每个交易日北京时间 16:40 左右自动运行，几分钟后刷新本页即可看到。节假日不更新。</p></div>
+  <div class="card"><b>什么时候更新</b><ul class="small">
+    <li><b>盘中选股</b>：每个交易日北京时间约 14:40–14:50（利雅得时间 9:40–9:50），用当时的价格选股，方便尾盘操作。</li>
+    <li><b>收盘后</b>：北京时间 16:40 左右再跑一次，用收盘数据更新模拟盘。如果当天盘中那次没跑成，会用收盘价补算，标“收盘后补算”。</li>
+    <li>GitHub 的定时偶尔会晚几分钟。节假日不更新。</li></ul></div>
   <div class="card"><b>添加到手机桌面</b><ul class="small">
     <li>iPhone：用 Safari 打开 → 底部“分享”按钮 → “添加到主屏幕”</li>
     <li>安卓：用 Chrome 打开 → 右上角菜单 → “添加到主屏幕 / 安装应用”</li></ul></div>
@@ -337,7 +342,10 @@ function renderAbout() {
 // ------------------------------------------------------------------ shell
 function render() {
   const L = S.latest;
-  $("#sub").textContent = L && L.asof ? `数据日期 ${L.asof} · 更新于 ${L.generated}（北京时间）` : (S.err ? "等待首次运行" : "加载中…");
+  const hm = L && L.generated ? L.generated.slice(11) : "";
+  $("#sub").textContent = L && L.asof
+    ? (L.mode === "intraday" ? `${L.asof} 盘中 ${hm} 更新（北京时间）` : `数据日期 ${L.asof} · 收盘后更新于 ${L.generated}（北京时间）`)
+    : (S.err ? "等待首次运行" : "加载中…");
   const f = { today: renderToday, paper: renderPaper, bt: renderBt, about: renderAbout }[S.tab];
   $("#app").innerHTML = f();
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));

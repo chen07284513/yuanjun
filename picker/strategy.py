@@ -137,10 +137,10 @@ def find_signals(o, h, l, c, chg, amt, lim, first_rel,
 
 
 @njit(cache=True)
-def simulate_exit(o, h, l, c, chg, lim, t0, j, stop, TP, H):
-    """Return (exit_t, exit_price, reason) reason: 0=time,1=stop,2=tp,3=data end."""
+def simulate_exit(o, h, l, c, chg, lim, t0, j, stop, TP, H, entry):
+    """Return (exit_t, exit_price, reason) reason: 0=time,1=stop,2=tp,3=data end.
+    entry: buy price on day t0 (the close in the backtest, the 14:4x price in the live app)."""
     T = c.shape[0]
-    entry = c[t0, j]
     held = 0
     t = t0
     while True:
@@ -189,7 +189,7 @@ def run(P, params, t_start):
     trades = []
     for t0, j, stop, stk, dd in zip(ts, js, stops, streaks, dds):
         te, px, why = simulate_exit(o, h, l, c, chg, lim, int(t0), int(j), float(stop),
-                                    params["TP"], params["H"])
+                                    params["TP"], params["H"], float(c[t0, j]))
         entry = float(c[t0, j])
         gross = px / entry - 1.0
         net = gross - cost_rate(dates[te])

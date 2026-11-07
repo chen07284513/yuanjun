@@ -89,7 +89,7 @@ def tx_kline(code, lmt=80):
 class LiveFetcher:
     """Fetch everything the daily run needs. Records which sources worked."""
 
-    def __init__(self, workers=8, lmt=80, log=print):
+    def __init__(self, workers=12, lmt=80, log=print):
         self.workers, self.lmt, self.log = workers, lmt, log
         self.primary = "em"
         self.used = {"em": 0, "tx": 0, "fail": 0}
