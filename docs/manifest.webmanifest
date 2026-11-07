@@ -1,0 +1,16 @@
+{
+  "name": "援军观察 · 模拟盘",
+  "short_name": "援军观察",
+  "description": "援军战法每日选股与模拟盘跟踪（非投资建议）",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f2ee",
+  "theme_color": "#14171f",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

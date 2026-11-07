@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>援军观察</title>
+<meta name="theme-color" content="#14171f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="援军观察">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f4f2ee; --card:#fff; --ink:#1c1f26; --mute:#6b7280; --line:#e7e3dc;
+  --up:#d9363e; --down:#16a34a; --accent:#14171f; --gold:#b7791f; --chip:#efece6;
+  --safe-top:env(safe-area-inset-top,0px); --safe-bot:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--accent);color:#fff;
+  padding:calc(var(--safe-top) + 12px) 16px 12px}
+header h1{margin:0;font-size:19px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+header h1 small{font-size:12px;font-weight:400;opacity:.65}
+header .sub{font-size:12px;opacity:.75;margin-top:2px}
+main{padding:12px 12px calc(84px + var(--safe-bot));max-width:640px;margin:0 auto}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:5;background:#fff;border-top:1px solid var(--line);
+  display:flex;padding-bottom:var(--safe-bot)}
+nav button{flex:1;border:0;background:none;padding:9px 0 8px;font-size:12px;color:var(--mute);
+  display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button svg{width:22px;height:22px}
+nav button.on{color:var(--ink);font-weight:600}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px;border:1px solid var(--line)}
+.banner{background:#fff7e6;border:1px solid #f3d9a4;color:#7a4d00;border-radius:12px;padding:10px 12px;
+  font-size:13px;margin-bottom:10px}
+.banner.info{background:#eef2ff;border-color:#d6defc;color:#2b3a75}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.grid3 b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.grid3 span{font-size:12px;color:var(--mute)}
+.chips{display:flex;gap:6px;margin:4px 0 10px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:13px;color:var(--ink)}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.stock .nm{font-size:17px;font-weight:600}
+.stock .cd{color:var(--mute);font-size:13px;margin-left:6px;font-variant-numeric:tabular-nums}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.tag{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--chip);color:#4b5160}
+.tag.strict{background:#fdecc8;color:#7a4d00;font-weight:600}
+.tag.ok{background:#fde8e8;color:var(--up)}
+.tag.no{background:#f1f1f1;color:#9aa0a6;text-decoration:line-through}
+.tag.bf{background:#e8eefc;color:#2b3a75}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 8px;margin-top:10px}
+.kv div{background:#faf9f6;border-radius:8px;padding:6px 8px}
+.kv span{display:block;font-size:11px;color:var(--mute)}
+.kv b{font-size:15px;font-variant-numeric:tabular-nums}
+.kv span.up{color:var(--up)} .kv span.down{color:var(--down)}
+.btns{display:flex;gap:8px;margin-top:10px}
+.btn{flex:1;border:0;border-radius:10px;padding:10px 0;font-size:14px;font-weight:600}
+.btn.main{background:var(--up);color:#fff}
+.btn.sec{background:var(--chip);color:var(--ink)}
+.up{color:var(--up)} .down{color:var(--down)} .mute{color:var(--mute)}
+.small{font-size:12px} .h2{font-size:16px;font-weight:700;margin:16px 4px 8px}
+.empty{text-align:center;color:var(--mute);padding:28px 10px}
+.list .it{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.list .it:first-child{border-top:0}
+.list .l b{font-weight:600}
+.list .r{text-align:right;font-variant-numeric:tabular-nums}
+.list .r b{font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 4px;text-align:right;border-top:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:500;border-top:0}
+.verdict{border-left:4px solid var(--up);padding-left:10px}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--mute);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+p{margin:6px 0} ol,ul{padding-left:20px;margin:6px 0}
+.toast{position:fixed;left:50%;bottom:calc(90px + var(--safe-bot));transform:translateX(-50%);
+  background:rgba(20,23,31,.92);color:#fff;padding:9px 14px;border-radius:10px;font-size:13px;
+  opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:86%;text-align:center}
+.toast.show{opacity:1}
+.preview{background:#14171f;color:#ffd78a;font-size:12px;text-align:center;padding:6px}
+</style>
+</head>
+<body>
+<div id="preview" class="preview" hidden></div>
+<header>
+  <h1>援军观察 <small>模拟盘 · 非投资建议</small></h1>
+  <div class="sub" id="sub">加载中…</div>
+</header>
+<main id="app"></main>
+<nav id="nav">
+  <button data-tab="today" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>今日</button>
+  <button data-tab="paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>模拟盘</button>
+  <button data-tab="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="3" height="9"/><rect x="10.5" y="5" width="3" height="14"/><rect x="17" y="13" width="3" height="6"/></svg>回测</button>
+  <button data-tab="about"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>说明</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script>
+const S = { tab: "today", todayFilter: "all", paperGroup: "base", paperBackfill: true, btGroup: "strict",
+            latest: null, trades: null, bt: null, err: null };
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct = (x, d = 1, sign = true) => {
+  if (x == null) return "—";
+  const v = Number((x * 100).toFixed(d));
+  return (sign && v > 0 ? "+" : "") + (v === 0 ? (0).toFixed(d) : v.toFixed(d)) + "%";
+};
+const cls = (x) => x == null ? "" : x > 0 ? "up" : x < 0 ? "down" : "";
+const num = (x, d = 2) => x == null ? "—" : Number(x).toFixed(d);
+const GN = { base: "原版", strict: "严格版" };
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+async function copyCode(code) {
+  try { await navigator.clipboard.writeText(code); return true; }
+  catch (e) {
+    try {
+      const ta = document.createElement("textarea"); ta.value = code; document.body.appendChild(ta);
+      ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok;
+    } catch (e2) { return false; }
+  }
+}
+async function openThs(code) {
+  const ok = await copyCode(code);
+  toast(ok ? `已复制 ${code}，在同花顺搜索框粘贴即可` : `请在同花顺搜索 ${code}`);
+  setTimeout(() => { window.location.href = "amihexin://"; }, 350);
+}
+async function onlyCopy(code) {
+  toast((await copyCode(code)) ? `已复制 ${code}` : `复制失败，代码：${code}`);
+}
+
+async function load() {
+  if (window.__DATA__) {
+    Object.assign(S, window.__DATA__);
+    if (window.__DATA__.previewNote) { const p = $("#preview"); p.hidden = false; p.textContent = window.__DATA__.previewNote; }
+    return;
+  }
+  const get = async (f) => { const r = await fetch(`data/${f}?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(f + " " + r.status); return r.json(); };
+  try {
+    const [latest, trades, bt] = await Promise.all([get("latest.json"), get("trades.json"), get("backtest.json")]);
+    Object.assign(S, { latest, trades, bt });
+  } catch (e) {
+    try { S.bt = await get("backtest.json"); } catch (e2) {}
+    S.err = "还没有每日数据。第一次自动运行完成后（交易日北京时间 16:40 之后）这里就会显示。";
+  }
+}
+
+function trList() { return Object.values(S.trades?.trades || {}); }
+
+// ------------------------------------------------------------------ 今日
+function renderToday() {
+  const L = S.latest;
+  if (!L) return `<div class="banner info">${esc(S.err || "暂无数据")}</div>`;
+  const m = L.market || {};
+  let h = "";
+  (L.notes || []).forEach(n => h += `<div class="banner">${esc(n)}</div>`);
+  const yn = (v) => v == null ? `<span class="mute">未知</span>` : v ? `<span class="up">是</span>` : `<span class="down">否</span>`;
+  h += `<div class="card"><div class="grid3">
+      <div><b>${m.limit_ups ?? "—"}</b><span>当日涨停家数</span></div>
+      <div><b>${yn(m.index_above_ma20)}</b><span>大盘在20日线上</span></div>
+      <div><b>${yn(m.emotion_ok)}</b><span>情绪达标（严格版）</span></div>
+    </div></div>`;
+  const all = (L.today || []).map(k => S.trades?.trades?.[k]).filter(Boolean);
+  const nStrict = all.filter(t => t.groups.includes("strict")).length;
+  h += `<div class="chips">
+      <button class="chip ${S.todayFilter === "all" ? "on" : ""}" data-tf="all">全部 ${all.length}</button>
+      <button class="chip ${S.todayFilter === "strict" ? "on" : ""}" data-tf="strict">只看严格版 ${nStrict}</button></div>`;
+  const list = (S.todayFilter === "strict" ? all.filter(t => t.groups.includes("strict")) : all)
+    .sort((a, b) => (b.groups.includes("strict") - a.groups.includes("strict")) || (b.streak - a.streak) || (b.amount_yi - a.amount_yi));
+  if (!list.length) {
+    h += `<div class="card empty">今天没有符合条件的股票。<br><span class="small">这很正常：援军战法的信号很不均匀，有时连续几周都没有。</span></div>`;
+  }
+  list.forEach(t => h += stockCard(t));
+  h += `<p class="small mute" style="margin:8px 4px">信号价 = 信号日收盘价（规则假设尾盘买入）。止损 = 跌破撤军线；止盈 = +8%；最多持有 5 个交易日。</p>`;
+  return h;
+}
+
+function stockCard(t) {
+  const code = t.code.slice(2);
+  const strict = t.groups.includes("strict");
+  const b = t.badges || {};
+  const stopDist = t.stop && t.entry ? t.stop / t.entry - 1 : null;
+  return `<div class="card stock">
+    <div class="row"><div><span class="nm">${esc(t.name || code)}</span>${t.name ? `<span class="cd">${code}</span>` : ""}</div>
+      <div class="small mute">${t.streak}连板后回调 ${pct(t.dd, 0, false)}</div></div>
+    <div class="tags">
+      ${t.groups.includes("base") ? `<span class="tag">原版</span>` : ""}
+      ${strict ? `<span class="tag strict">严格版</span>` : ""}
+      <span class="tag ${b.emotion ? "ok" : "no"}">情绪</span>
+      <span class="tag ${b.first_hold ? "ok" : "no"}">首板不破</span>
+      <span class="tag ${b.vol_shrink ? "ok" : "no"}">缩量回调</span>
+      ${t.backfill ? `<span class="tag bf">启动补录</span>` : ""}
+    </div>
+    <div class="kv">
+      <div><span>信号价</span><b>${num(t.entry)}</b></div>
+      <div><span>撤军线(止损)</span><b class="down">${num(t.stop)}</b><span class="down">${pct(stopDist)}</span></div>
+      <div><span>止盈价</span><b class="up">${num(t.tp)}</b><span class="up">+8.0%</span></div>
+    </div>
+    <div class="btns">
+      <button class="btn main" data-ths="${code}">在同花顺打开</button>
+      <button class="btn sec" data-copy="${code}">复制代码</button>
+    </div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ 模拟盘
+function stats(list) {
+  const closed = list.filter(t => t.status === "closed");
+  const n = closed.length;
+  const win = n ? closed.filter(t => t.ret > 0).length / n : null;
+  const mean = n ? closed.reduce((s, t) => s + t.ret, 0) / n : null;
+  return { n, win, mean, open: list.filter(t => t.status === "open").length };
+}
+
+function renderPaper() {
+  if (!S.trades) return `<div class="banner info">${esc(S.err || "暂无数据")}</div>`;
+  const g = S.paperGroup;
+  let list = trList().filter(t => t.groups.includes(g));
+  if (!S.paperBackfill) list = list.filter(t => !t.backfill);
+  const st = stats(list);
+  const closed = list.filter(t => t.status === "closed").sort((a, b) => a.exit_date.localeCompare(b.exit_date));
+  let h = `<div class="chips">
+    <button class="chip ${g === "base" ? "on" : ""}" data-pg="base">原版</button>
+    <button class="chip ${g === "strict" ? "on" : ""}" data-pg="strict">严格版</button>
+    <button class="chip ${S.paperBackfill ? "on" : ""}" data-bf="1">${S.paperBackfill ? "含" : "不含"}启动补录</button></div>`;
+  h += `<div class="card"><div class="grid3">
+      <div><b>${st.n}</b><span>已结束笔数</span></div>
+      <div><b>${st.win == null ? "—" : (st.win * 100).toFixed(0) + "%"}</b><span>胜率</span></div>
+      <div><b class="${cls(st.mean)}">${pct(st.mean, 2)}</b><span>平均每笔（已扣费）</span></div>
+    </div>
+    ${closed.length >= 2 ? curveSvg(closed) : ""}
+    <p class="small mute">从 app 启动那天起自动记录，按规则假设：信号日收盘买入，止损/止盈/满 5 天卖出。“启动补录”是第一次运行时用同样规则补记的前 10 个交易日。</p>
+  </div>`;
+  const open = list.filter(t => t.status === "open").sort((a, b) => b.date.localeCompare(a.date));
+  h += `<div class="h2">持有中 ${open.length}</div><div class="card list">`;
+  h += open.length ? open.map(t => `<div class="it"><div class="l"><b>${esc(t.name || t.code.slice(2))}</b>
+      ${t.name ? `<span class="small mute"> ${t.code.slice(2)}</span>` : ""}<br><span class="small mute">${t.date} 买入 · 已持 ${t.held ?? 0} 天 · 止损 ${num(t.stop)}</span></div>
+      <div class="r"><b class="${cls(t.ret)}">${pct(t.ret)}</b><br><span class="small mute">现价 ${num(t.last)}</span></div></div>`).join("")
+    : `<div class="empty">没有持有中的模拟仓位</div>`;
+  h += `</div>`;
+  const done = [...closed].reverse().slice(0, 60);
+  h += `<div class="h2">已结束（最近 ${done.length} 笔）</div><div class="card list">`;
+  h += done.length ? done.map(t => `<div class="it"><div class="l"><b>${esc(t.name || t.code.slice(2))}</b>
+      ${t.name ? `<span class="small mute"> ${t.code.slice(2)}</span>` : ""}<br><span class="small mute">${t.date} → ${t.exit_date} · ${t.reason}</span></div>
+      <div class="r"><b class="${cls(t.ret)}">${pct(t.ret)}</b><br><span class="small mute">${num(t.entry)} → ${num(t.exit)}</span></div></div>`).join("")
+    : `<div class="empty">还没有已结束的交易</div>`;
+  return h + `</div>`;
+}
+
+function curveSvg(closed) {
+  let s = 0; const pts = closed.map(t => (s += t.ret));
+  const W = 320, H = 90, mn = Math.min(0, ...pts), mx = Math.max(0, ...pts), rng = (mx - mn) || 1;
+  const x = (i) => 4 + i * (W - 8) / Math.max(1, pts.length - 1), y = (v) => 6 + (mx - v) * (H - 12) / rng;
+  const d = pts.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+  const last = pts[pts.length - 1];
+  return `<div class="small mute" style="margin-top:10px">每笔等额投入的累计盈亏：<b class="${cls(last)}">${pct(last)}</b></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:4px">
+    <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="#d5d0c6" stroke-dasharray="3 3"/>
+    <path d="${d}" fill="none" stroke="${last >= 0 ? "var(--up)" : "var(--down)"}" stroke-width="2"/></svg>`;
+}
+
+// ------------------------------------------------------------------ 回测
+function renderBt() {
+  const B = S.bt;
+  if (!B) return `<div class="empty">回测数据加载失败</div>`;
+  const b = B.groups.base, s = B.groups.strict, g = B.groups[S.btGroup];
+  let h = `<div class="card verdict"><b>结论：按固定规则做，长期基本不赚钱。</b>
+    <p class="small">${B.period[0]} 至 ${B.period[1]}，${esc(B.universe || "沪深 A 股（含退市股）")}，已扣手续费、印花税和滑点。</p>
+    <p class="small">原版 ${b.trades.n} 个信号，胜率 ${(b.trades.win * 100).toFixed(0)}%，平均每笔 <b class="${cls(b.trades.mean)}">${pct(b.trades.mean, 2)}</b>。
+    严格版 ${s.trades.n} 个，胜率 ${(s.trades.win * 100).toFixed(0)}%，平均每笔 <b class="${cls(s.trades.mean)}">${pct(s.trades.mean, 2)}</b>。</p>
+    <p class="small">另外测了 ${B.grid.tested} 组参数，2016–2021 年有 ${(B.grid.ins_negative_share * 100).toFixed(0)}% 是亏的；前后两段都赚钱的只有 ${B.grid.both_positive} 组，最好的每笔也只有 ${pct(B.grid.best_both_mean, 2)}。</p></div>`;
+  h += `<div class="chips">
+    <button class="chip ${S.btGroup === "strict" ? "on" : ""}" data-bg="strict">严格版</button>
+    <button class="chip ${S.btGroup === "base" ? "on" : ""}" data-bg="base">原版</button></div>`;
+  const p = g.portfolio;
+  h += `<div class="card"><div class="small mute">最多同时持 5 只、每只 1/5 仓位的模拟账户</div>
+    <div class="grid3" style="margin-top:8px">
+      <div><b class="${cls(p.total)}">${pct(p.total, 0)}</b><span>总收益</span></div>
+      <div><b class="down">${pct(p.mdd, 0)}</b><span>最大回撤</span></div>
+      <div><b class="${cls(B.benchmark.total)}">${pct(B.benchmark.total, 0)}</b><span>同期沪深300</span></div>
+    </div>${btCurve(g.curve)}</div>`;
+  h += `<div class="card"><table><tr><th>年份</th><th>信号</th><th>胜率</th><th>每笔</th><th>账户</th><th>沪深300</th></tr>`;
+  g.years.forEach(y => h += `<tr><td>${y.year}</td><td>${y.n}</td><td>${y.n ? (y.win * 100).toFixed(0) + "%" : "—"}</td>
+      <td class="${cls(y.mean)}">${y.n ? pct(y.mean, 1) : "—"}</td><td class="${cls(y.port)}">${pct(y.port, 0)}</td>
+      <td class="${cls(y.csi300)}">${pct(y.csi300, 0)}</td></tr>`);
+  h += `</table></div>
+    <p class="small mute" style="margin:4px">成本：${esc(B.cost)}。数据：${esc(B.data)}。只用日线数据，测不到盘中“T 位”和题材判断，这部分属于主观经验。</p>`;
+  return h;
+}
+
+function btCurve(curve) {
+  const W = 320, H = 130;
+  const a = curve.map(c => Math.log(c[1])), b = curve.map(c => Math.log(c[2]));
+  const mn = Math.min(...a, ...b), mx = Math.max(...a, ...b), rng = (mx - mn) || 1;
+  const x = (i) => 4 + i * (W - 8) / (curve.length - 1), y = (v) => 6 + (mx - v) * (H - 16) / rng;
+  const path = (arr) => arr.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+  const yr = [];
+  curve.forEach((c, i) => { if (c[0].endsWith("-12") && i % 2 === 0) yr.push(i); });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px">
+    <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="#d5d0c6" stroke-dasharray="3 3"/>
+    ${yr.map(i => `<text x="${x(i)}" y="${H - 1}" font-size="9" fill="#9aa0a6" text-anchor="middle">${curve[i][0].slice(0, 4)}</text>`).join("")}
+    <path d="${path(b)}" fill="none" stroke="#9aa0a6" stroke-width="1.5"/>
+    <path d="${path(a)}" fill="none" stroke="var(--up)" stroke-width="2"/></svg>
+    <div class="legend"><span><i style="background:var(--up)"></i>策略账户</span><span><i style="background:#9aa0a6"></i>沪深300</span><span>对数坐标</span></div>`;
+}
+
+// ------------------------------------------------------------------ 说明
+function renderAbout() {
+  return `<div class="card"><b>这是什么</b>
+    <p>把抖音“狙盘手”的<b>援军战法</b>写成固定规则，每个交易日收盘后自动选股，并按规则<b>模拟买卖、记录真实涨跌</b>。用来观察这个战法到底灵不灵，<b>不是投资建议</b>。</p></div>
+  <div class="card"><b>股票池</b><p class="small">沪深主板 + 创业板。<b>不含科创板</b>、北交所和 ST 股。</p></div>
+  <div class="card"><b>选股规则（原版）</b><ol class="small">
+    <li>最近 20 个交易日内出现过<b>2 连板</b>以上（龙头）</li>
+    <li>之后见顶回落，从最高点回调 15%–40%</li>
+    <li>回调中每天创新低，最后一个新低当天的最低价 = <b>撤军线</b></li>
+    <li>接下来两天<b>都没再跌破撤军线</b>，第二天收阳线 → 尾盘买入</li>
+    <li>买入价离撤军线不超过 10%，当天成交额 ≥ 1 亿，不是涨停（买不进）</li></ol>
+    <b>严格版</b>另外要求：回调 20%–50%、大盘在 20 日线上且当天涨停 ≥ 60 家（情绪好）、撤军线不低于首个涨停板开盘价（首板不破）、回调期间缩量到连板时的 60% 以下。</div>
+  <div class="card"><b>卖出规则（两版相同）</b><ul class="small">
+    <li>跌破撤军线 → 止损</li><li>涨到 +8% → 止盈</li><li>否则第 5 个交易日收盘卖出</li></ul></div>
+  <div class="card"><b>什么时候更新</b><p class="small">每个交易日北京时间 16:40 左右自动运行，几分钟后刷新本页即可看到。节假日不更新。</p></div>
+  <div class="card"><b>添加到手机桌面</b><ul class="small">
+    <li>iPhone：用 Safari 打开 → 底部“分享”按钮 → “添加到主屏幕”</li>
+    <li>安卓：用 Chrome 打开 → 右上角菜单 → “添加到主屏幕 / 安装应用”</li></ul></div>
+  <div class="card"><b>同花顺按钮</b><p class="small">点“在同花顺打开”会先复制股票代码，再打开同花顺 app，在搜索框粘贴即可。没装同花顺时不会有反应。</p></div>
+  <p class="small mute" style="margin:8px 4px">风险提示：回测和模拟盘结果都不代表未来收益。股市有风险，任何真实交易请自行判断。</p>`;
+}
+
+// ------------------------------------------------------------------ shell
+function render() {
+  const L = S.latest;
+  $("#sub").textContent = L && L.asof ? `数据日期 ${L.asof} · 更新于 ${L.generated}（北京时间）` : (S.err ? "等待首次运行" : "加载中…");
+  const f = { today: renderToday, paper: renderPaper, bt: renderBt, about: renderAbout }[S.tab];
+  $("#app").innerHTML = f();
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  const d = t.dataset;
+  if (d.tab) { S.tab = d.tab; try { localStorage.setItem("tab", d.tab); } catch (x) {} render(); window.scrollTo(0, 0); }
+  else if (d.tf) { S.todayFilter = d.tf; render(); }
+  else if (d.pg) { S.paperGroup = d.pg; render(); }
+  else if (d.bf) { S.paperBackfill = !S.paperBackfill; render(); }
+  else if (d.bg) { S.btGroup = d.bg; render(); }
+  else if (d.ths) openThs(d.ths);
+  else if (d.copy) onlyCopy(d.copy);
+});
+
+(async () => {
+  try { const t = localStorage.getItem("tab"); if (t) S.tab = t; } catch (x) {}
+  await load(); render();
+  if ("serviceWorker" in navigator && !window.__DATA__ && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>

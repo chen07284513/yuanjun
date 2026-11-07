@@ -1,0 +1,59 @@
+name: daily-pick
+
+on:
+  schedule:
+    - cron: "40 8 * * 1-5"   # 北京时间 16:40（A股收盘后），周一至周五
+  workflow_dispatch:          # 手动运行
+  push:
+    branches: [main]
+    paths: ["docs/**", "!docs/data/**"]   # 改界面时只重新发布页面
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-pick
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        if: github.event_name != 'push'
+        run: pip install -r requirements.txt
+
+      - name: 选股并更新模拟盘
+        if: github.event_name != 'push'
+        run: python picker/daily.py docs/data
+
+      - name: 保存数据
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "daily-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data picker/names.json
+          git diff --cached --quiet || git commit -m "data: $(TZ=Asia/Shanghai date +%F)"
+          git pull --rebase --quiet || true
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
