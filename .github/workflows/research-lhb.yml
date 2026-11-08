@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "test 或 full"
+        description: "test / full（龙虎榜）或 boards（板块成分）"
         default: "test"
       start:
         default: "2024-01-02"
@@ -24,10 +24,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests
-      - name: 抓取龙虎榜
-        run: python -u research/fetch_lhb.py ${{ inputs.mode }} ${{ inputs.start }} ${{ inputs.end }}
+      - name: 抓取数据
+        env:
+          MODE: ${{ inputs.mode }}
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+        run: |
+          if [ "$MODE" = "boards" ]; then python -u research/fetch_boards.py
+          else python -u research/fetch_lhb.py "$MODE" "$START" "$END"; fi
       - name: 保存到 research-data 分支
-        if: inputs.mode == 'full'
+        if: inputs.mode == 'full' || inputs.mode == 'boards'
         run: |
           mkdir -p /tmp/out && cp research/data/*.csv.gz /tmp/out/
           git config user.name "research-bot"
@@ -40,5 +46,5 @@ jobs:
           fi
           cp /tmp/out/*.csv.gz .
           git add *.csv.gz
-          git commit -m "lhb data ${{ inputs.start }}..${{ inputs.end }}" || true
+          git commit -m "research data: ${{ inputs.mode }}" || true
           git push origin research-data
