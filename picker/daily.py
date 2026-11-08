@@ -244,7 +244,8 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
         json.dump(book, f, ensure_ascii=False, separators=(",", ":"))
     if mode == "close" and status == "ok":
         try:
-            P2 = shouban.Panel(cal, pcodes, A, chg, lim, first_rel, mkt[1], shouban.load_industry())
+            P2 = shouban.Panel(cal, pcodes, A, chg, lim, first_rel, mkt[1], shouban.load_industry(),
+                               shouban.load_concepts())
             shouban.run_close(P2, names, st_codes, out_dir, now, log=log)
         except Exception as e:  # noqa: BLE001
             log(f"首板 failed: {e!r}")

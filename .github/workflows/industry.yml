@@ -2,7 +2,7 @@ name: industry-refresh
 
 on:
   schedule:
-    - cron: "23 1 * * 6"   # 每周六北京时间 9:23 更新行业成分
+    - cron: "23 1 * * 6"   # 每周六北京时间 9:23 更新行业和概念成分
   workflow_dispatch:
 
 permissions:
@@ -11,20 +11,20 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests
-      - name: 更新行业成分
+      - run: pip install requests numpy
+      - name: 更新行业和概念成分
         run: python -u picker/refresh_industry.py
       - name: 保存
         run: |
           git config user.name "daily-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add picker/industry_L2.csv.gz
+          git add picker/industry_L2.csv.gz picker/concept.csv.gz
           git diff --cached --quiet || git commit -m "industry: $(TZ=Asia/Shanghai date +%F)"
           git pull --rebase --quiet || true
           git push

@@ -10,6 +10,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "research"))
+sys.path.insert(0, HERE)
 from fetch_boards import clist  # noqa: E402
 
 
@@ -40,6 +41,23 @@ def main():
         w = csv.DictWriter(f, fieldnames=["board", "board_name", "code", "market", "name"])
         w.writeheader()
         w.writerows(out)
+    # 概念板块（去掉指数成分、资金持仓、价格形态等非题材分类）
+    from shouban import CONCEPT_EXCL, CONCEPT_MAX_SIZE
+    con = []
+    for b in clist("m:90+t:3", "f12,f14"):
+        if CONCEPT_EXCL.search(b["f14"]):
+            continue
+        mem = clist(f"b:{b['f12']}+f:!50", "f12,f13,f14")
+        if len(mem) > CONCEPT_MAX_SIZE:
+            continue
+        con += [dict(board=b["f12"], board_name=b["f14"], code=str(m["f12"]), market=str(m["f13"]), name=m["f14"]) for m in mem]
+    n_con = len({c["board"] for c in con})
+    print(f"concept boards kept {n_con}, rows {len(con)}")
+    if n_con >= 200:
+        with gzip.open(os.path.join(HERE, "concept.csv.gz"), "wt", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["board", "board_name", "code", "market", "name"])
+            w.writeheader()
+            w.writerows(con)
 
 
 if __name__ == "__main__":

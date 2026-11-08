@@ -16,6 +16,11 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_PER_DAY, MAX_GAP, HOLD_DAYS = 5, 0.07, 3
+# 概念板块里不是“题材”的分类（指数成分、资金持仓、价格形态、财报标签等）不参与分析
+CONCEPT_EXCL = re.compile(r"融资融券|股通|重仓|减仓|增仓|新进|持股|罗素|标准普尔|MSCI|创业板综|创业成份|中证|深成|上证|HS300|央视|深证|"
+                          r"小盘|中盘|大盘|微盘|破净|破发|破增发|低价|昨日|最近多板|连续亏损|预增|预盈|预亏|预减|转债标的|权重股|茅指数|"
+                          r"高振幅|高换手|AH股|B股|GDR|注册制|次新|ST|退市|风格|增持|首亏|扭亏|股权分散|股权集中|市盈率|市净率|外资背景|超跌|百元股|红利股|高成长|价值股|热股|微利股|周期股|趋势股|行业龙头|新高|摘帽|题材股|反转股|做市|股权转让|密集调研|金股|宁组合|北交所|举牌|养老金")
+CONCEPT_MAX_SIZE = 600
 
 
 def cost(d):
@@ -36,10 +41,24 @@ def load_industry():
     return m
 
 
+def load_concepts():
+    m = {}
+    path = os.path.join(HERE, "concept.csv.gz")
+    if not os.path.exists(path):
+        return m
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if CONCEPT_EXCL.search(r["board_name"]):
+                continue
+            code = ("sh" if str(r["market"]) == "1" else "sz") + str(r["code"]).zfill(6)
+            m.setdefault(code, []).append((r["board"], r["board_name"]))
+    return m
+
+
 class Panel:
     """Everything derived from the daily panel that the 首板 rules need."""
 
-    def __init__(self, cal, codes, A, chg, lim, first_rel, idx_up, industry):
+    def __init__(self, cal, codes, A, chg, lim, first_rel, idx_up, industry, concepts=None):
         self.cal, self.codes = cal, codes
         self.O, self.H, self.L, self.C, self.V, self.AMT = (A[k].astype(np.float64) for k in ["o", "h", "l", "c", "v", "a"])
         self.CHG = chg.astype(np.float64)
@@ -93,6 +112,50 @@ class Panel:
             vals = self.sec_ret[t]
             sv = -np.sort(-vals)
             self.sec_rank[t] = np.searchsorted(-sv, -vals, side="left") + 1
+
+        # concepts
+        self.con_names, cid = [], {}
+        pairs = []
+        for j, c in enumerate(codes):
+            for b, nm in (concepts or {}).get(c, []):
+                if b not in cid:
+                    cid[b] = len(self.con_names)
+                    self.con_names.append(nm)
+                pairs.append((j, cid[b]))
+        K = len(self.con_names)
+        self.Mc = np.zeros((N, max(K, 1)))
+        if pairs:
+            jj, kk = zip(*pairs)
+            self.Mc[list(jj), list(kk)] = 1
+            size = self.Mc.sum(0)
+            self.Mc[:, size > CONCEPT_MAX_SIZE] = 0
+        ccnt = valid @ self.Mc
+        self.con_ret = (np.nan_to_num(self.CHG) @ self.Mc) / np.maximum(ccnt, 1)
+        self.con_lu = self.LU.astype(float) @ self.Mc
+        ccum = np.cumsum(np.log1p(self.con_ret), axis=0)
+        self.con_ret5 = np.full_like(self.con_ret, np.nan)
+        self.con_ret5[5:] = np.expm1(ccum[5:] - ccum[:-5])
+        self.con_valid = ccnt[-1] >= 3
+
+    def concept_info(self, t, j, top=3):
+        ks = np.where(self.Mc[j] > 0)[0]
+        if len(ks) == 0:
+            return dict(concepts=[], con_rebound=False, con_rebound_names=[])
+        order = ks[np.lexsort((-self.con_ret[t, ks], -self.con_lu[t, ks]))]
+        reb = [k for k in order if self.con_ret5[t, k] <= -0.03 and self.con_ret[t, k] >= 0.02]
+        item = lambda k: dict(name=self.con_names[k], ret=r(self.con_ret[t, k]), ret5=r(self.con_ret5[t, k]),
+                              lu=int(self.con_lu[t, k]))
+        return dict(concepts=[item(k) for k in order[:top]], con_rebound=bool(reb),
+                    con_rebound_names=[self.con_names[k] for k in reb[:3]])
+
+    def concept_board(self, t, n=10):
+        ks = np.where(self.con_valid)[0]
+        hot = ks[np.lexsort((-self.con_ret[t, ks], -self.con_lu[t, ks]))][:n]
+        rb = [k for k in ks if self.con_ret5[t, k] <= -0.03 and self.con_ret[t, k] >= 0.02]
+        rb = sorted(rb, key=lambda k: (-self.con_lu[t, k], -self.con_ret[t, k]))[:n]
+        item = lambda k: dict(name=self.con_names[k], ret=r(self.con_ret[t, k]), ret5=r(self.con_ret5[t, k]),
+                              lu=int(self.con_lu[t, k]))
+        return [item(k) for k in hot], [item(k) for k in rb], len([k for k in ks if self.con_ret5[t, k] <= -0.03 and self.con_ret[t, k] >= 0.02])
 
     def features(self, t, j):
         C, H, V = self.C, self.H, self.V
@@ -239,12 +302,14 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
         c = P.codes[j]
         item = dict(code=c, name=names.get(c, ""), sector=P.sec_names[P.sec_of[j]], close=r(P.C[t, j], 3),
                     p=r(p, 3), index=idx, tier=tier, **{k: r(v) if isinstance(v, float) else v for k, v in f.items()})
+        item.update(P.concept_info(t, j))
         if f["ruleA"]:
             picks.append(item)
             key = f"{c}|{asof}"
             if key not in book["trades"]:
                 book["trades"][key] = dict(code=c, name=item["name"], sector=item["sector"], date=asof,
-                                           index=idx, tier=tier, close=item["close"], status="pending")
+                                           index=idx, tier=tier, close=item["close"], status="pending",
+                                           con_rebound=item["con_rebound"])
         else:
             item["why_not"] = reasons(f)
             others.append(item)
@@ -258,6 +323,7 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
     rebound.sort(key=lambda x: x["rank"])
     hot = [dict(name=P.sec_names[s], ret=r(P.sec_ret[t, s]), ret5=r(P.sec_ret5[t, s]), lu=int(P.sec_lu[t, s]))
            for s in np.argsort(-P.sec_ret[t])[:8]]
+    hot_con, reb_con, n_reb_con = P.concept_board(t)
     book["meta"]["last_date"] = asof
     with open(tpath, "w", encoding="utf-8") as fh:
         json.dump(book, fh, ensure_ascii=False, separators=(",", ":"))
@@ -265,8 +331,10 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
                market=dict(limit_ups=int(P.LU[t].sum()), zb_rate=r(P.ZB[t].sum() / max(1, P.LU[t].sum() + P.ZB[t].sum())),
                            idx_up=bool(P.idx_up[t]), shouban=int((P.SB[t] & ~P.YIZI[t]).sum())),
                rebound=rebound, hot=hot, picks=picks, others=others[:10], others_count=len(others),
+               hot_concepts=hot_con, rebound_concepts=reb_con, rebound_concepts_count=n_reb_con,
                morning=None,
-               model=dict(tiers=model["tiers"], gaps=model["gaps"], bt=model["bt"], tier_cut=model["tier_cut"]))
+               model=dict(tiers=model["tiers"], gaps=model["gaps"], bt=model["bt"], tier_cut=model["tier_cut"],
+                          concept_stats=model.get("concept_stats")))
     with open(os.path.join(out_dir, "shouban.json"), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     log(f"首板 {asof}: 首板 {len(evs)} 只，符合规则 {len(picks)} 只，反弹板块 {len(rebound)} 个")
@@ -305,7 +373,7 @@ def run_morning(out_dir, quotes, now, log=print):
         for n, (gap, p) in enumerate(sorted(cand, key=lambda x: x[0])):
             p["verdict"] = "买入" if n < MAX_PER_DAY else "备选（已满5只）"
             p["order"] = n + 1
-        sb["morning"] = dict(time=now.strftime("%H:%M"), note=f"竞价已更新：{sum(1 for _, p in cand[:MAX_PER_DAY])} 只可按规则买入")
+        sb["morning"] = dict(time=now.strftime("%H:%M"), note=f"{min(len(cand), MAX_PER_DAY)} 只可按规则买入")
     sb["generated_morning"] = now.strftime("%Y-%m-%d %H:%M")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(sb, fh, ensure_ascii=False, separators=(",", ":"))
