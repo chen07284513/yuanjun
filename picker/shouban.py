@@ -83,7 +83,12 @@ class Panel:
         for k in range(1, 6):
             recent[k:] |= self.LU[:-k]
         listed = (np.arange(T)[:, None] - first_rel[None, :]) > 60
+        self.listed = listed
         self.SB = self.LU & ~recent & listed
+        self.streak = np.zeros((T, N), dtype=np.int16)
+        for t in range(1, T):
+            self.streak[t] = np.where(self.LU[t], self.streak[t - 1] + 1, 0)
+        self.streak[0] = self.LU[0].astype(np.int16)
         # sectors
         names, sid = [], {}
         self.sec_of = np.full(N, -1)
@@ -324,6 +329,7 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
     hot = [dict(name=P.sec_names[s], ret=r(P.sec_ret[t, s]), ret5=r(P.sec_ret5[t, s]), lu=int(P.sec_lu[t, s]))
            for s in np.argsort(-P.sec_ret[t])[:8]]
     hot_con, reb_con, n_reb_con = P.concept_board(t)
+    ladder, levels, broken = ladder_info(P, t, names, st_codes)
     book["meta"]["last_date"] = asof
     with open(tpath, "w", encoding="utf-8") as fh:
         json.dump(book, fh, ensure_ascii=False, separators=(",", ":"))
@@ -332,13 +338,42 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
                            idx_up=bool(P.idx_up[t]), shouban=int((P.SB[t] & ~P.YIZI[t]).sum())),
                rebound=rebound, hot=hot, picks=picks, others=others[:10], others_count=len(others),
                hot_concepts=hot_con, rebound_concepts=reb_con, rebound_concepts_count=n_reb_con,
+               ladder=ladder, levels=levels, broken=broken[:10], broken_count=len(broken),
+               height=max([x["k"] for x in ladder], default=1),
                morning=None,
                model=dict(tiers=model["tiers"], gaps=model["gaps"], bt=model["bt"], tier_cut=model["tier_cut"],
-                          concept_stats=model.get("concept_stats")))
+                          concept_stats=model.get("concept_stats"), ladder=model.get("ladder")))
     with open(os.path.join(out_dir, "shouban.json"), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     log(f"首板 {asof}: 首板 {len(evs)} 只，符合规则 {len(picks)} 只，反弹板块 {len(rebound)} 个")
     return out
+
+
+def ladder_info(P, t, names, st_codes):
+    """连板梯队 (>=2 boards), today's promotion rate per level and today's broken streaks."""
+    ok = P.listed[t] & np.array([c not in st_codes for c in P.codes])
+    lad = []
+    for j in np.where((P.streak[t] >= 2) & ok)[0]:
+        c, k = P.codes[j], int(P.streak[t, j])
+        ci = P.concept_info(t, j, top=1)
+        lad.append(dict(code=c, name=names.get(c, ""), k=k, yizi=bool(P.YIZI[t, j]),
+                        sector=P.sec_names[P.sec_of[j]] if P.sec_of[j] >= 0 else "",
+                        concept=ci["concepts"][0]["name"] if ci["concepts"] else "",
+                        amt_yi=r(P.AMT[t, j] / 1e5, 2), sec_ret=r(P.sec_ret[t, P.sec_of[j]]) if P.sec_of[j] >= 0 else None,
+                        start=P.cal[t - k + 1] if t - k + 1 >= 0 else None))
+    lad.sort(key=lambda x: (-x["k"], -(x["amt_yi"] or 0)))
+    levels = []
+    okp = P.listed[t - 1] & np.array([c not in st_codes for c in P.codes])
+    mx = int(P.streak[t - 1][okp].max()) if okp.any() else 0
+    for k in range(1, max(mx, 1) + 1):
+        prev = (P.streak[t - 1] == k) & okp
+        n = int(prev.sum())
+        if n:
+            levels.append(dict(k=k, n=n, up=int((prev & P.LU[t]).sum()), rate=r((prev & P.LU[t]).sum() / n, 3)))
+    brk = [dict(code=P.codes[j], name=names.get(P.codes[j], ""), k=int(P.streak[t - 1, j]), chg=r(P.CHG[t, j]))
+           for j in np.where((P.streak[t - 1] >= 2) & ~P.LU[t] & okp)[0]]
+    brk.sort(key=lambda x: -x["k"])
+    return lad, levels, brk
 
 
 # --------------------------------------------------------------------------- 9:26 auction check

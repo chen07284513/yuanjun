@@ -109,7 +109,7 @@ details{margin-top:8px} summary{cursor:pointer;color:#2b3a75;font-size:13px}
 </header>
 <main id="app"></main>
 <nav id="nav">
-  <button data-tab="sb" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/></svg>首板</button>
+  <button data-tab="sb" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/></svg>涨停</button>
   <button data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>援军</button>
   <button data-tab="paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>模拟盘</button>
   <button data-tab="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="3" height="9"/><rect x="10.5" y="5" width="3" height="14"/><rect x="17" y="13" width="3" height="6"/></svg>回测</button>
@@ -118,7 +118,7 @@ details{margin-top:8px} summary{cursor:pointer;color:#2b3a75;font-size:13px}
 <div class="toast" id="toast"></div>
 
 <script>
-const S = { tab: "sb", sbTrades: null, sb: null, todayFilter: "all", paperGroup: "base", paperBackfill: true, btGroup: "strict",
+const S = { tab: "sb", sbTrades: null, sb: null, sbView: "first", todayFilter: "all", paperGroup: "base", paperBackfill: true, btGroup: "strict",
             latest: null, trades: null, bt: null, err: null };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -237,6 +237,44 @@ function stockCard(t) {
 function renderSb() {
   const B = S.sb;
   if (!B) return `<div class="banner info">首板数据还没生成。每个交易日 16:40 左右收盘后更新，9:26 左右用竞价价格再更新一次。</div>`;
+  const seg = `<div class="chips"><button class="chip ${S.sbView === "first" ? "on" : ""}" data-sv="first">首板推荐</button>
+    <button class="chip ${S.sbView === "ladder" ? "on" : ""}" data-sv="ladder">连板梯队 ${(B.ladder || []).length}</button></div>`;
+  if (S.sbView === "ladder") return seg + renderLadder(B);
+  return seg + renderFirst(B);
+}
+
+function renderLadder(B) {
+  const L = (B.model || {}).ladder || {}, lv = {};
+  (L.levels || []).forEach(x => lv[x.k] = x);
+  const hist = (k) => lv[Math.min(k, 7)] || {};
+  const g = L.grid || {};
+  let h = `<div class="banner">回测结论：连板股<b>第二天开盘追买，每个高度平均都是亏的</b>（2板每笔 ${pct(hist(2).r_c2, 1)}、3板 ${pct(hist(3).r_c2, 1)}、4板 ${pct(hist(4).r_c2, 1)}，第二天收盘卖，已扣费）。
+    我测了 ${g.tested || 561} 种条件组合，没有找到前后两段都稳定赚钱的规则，所以这里<b>只做梯队观察，不给买入推荐</b>。</div>`;
+  h += `<div class="card"><div class="grid3">
+    <div><b>${B.height || "—"}板</b><span>最高板</span></div>
+    <div><b>${(B.ladder || []).length}</b><span>连板股（≥2板）</span></div>
+    <div><b>${B.broken_count ?? "—"}</b><span>今日断板</span></div></div>
+    <table style="margin-top:10px"><tr><th>晋级</th><th>今天</th><th>历史平均</th></tr>
+    ${(B.levels || []).map(x => { const hv = hist(x.k).promote; const strong = hv != null && x.rate > hv;
+      return `<tr><td>${x.k === 1 ? "首板" : x.k + "板"} → ${x.k + 1}板</td><td class="${strong ? "up" : "down"}">${x.up}/${x.n} = ${(x.rate * 100).toFixed(0)}%</td>
+        <td>${hv == null ? "—" : (hv * 100).toFixed(0) + "%"}</td></tr>`; }).join("")}</table>
+    <p class="small mute">今天晋级率高于历史平均（红色）说明接力情绪偏强，低于（绿色）说明偏弱。</p></div>`;
+  const groups = {};
+  (B.ladder || []).forEach(x => (groups[x.k] = groups[x.k] || []).push(x));
+  Object.keys(groups).map(Number).sort((a, b) => b - a).forEach(k => {
+    const hv = hist(k);
+    h += `<div class="h2">${k}板（${groups[k].length}只）<span class="small mute" style="font-weight:400"> · 历史：明天晋级 ${hv.promote == null ? "—" : (hv.promote * 100).toFixed(0) + "%"}，开盘追买平均 ${pct(hv.r_c2, 1)}、胜率 ${hv.win_c2 == null ? "—" : (hv.win_c2 * 100).toFixed(0) + "%"}</span></div><div class="card list">`;
+    h += groups[k].map(x => `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)}</span>
+        ${x.yizi ? `<span class="tag">一字</span>` : ""}<br><span class="small mute">${esc(x.sector)}${x.concept ? " · " + esc(x.concept) : ""} · 成交 ${num(x.amt_yi, 1)}亿 · ${esc(x.start || "")} 起</span></div>
+        <div class="r"><button class="btn sec" style="padding:6px 10px;font-size:12px" data-ths="${x.code.slice(2)}">同花顺</button></div></div>`).join("");
+    h += `</div>`;
+  });
+  if ((B.broken || []).length) h += `<details class="card"><summary>今日断板 ${B.broken_count} 只</summary><div class="list">${B.broken.map(x =>
+      `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)} · 昨天${x.k}板</span></div><div class="r"><b class="${cls(x.chg)}">${pct(x.chg)}</b></div></div>`).join("")}</div></details>`;
+  return h;
+}
+
+function renderFirst(B) {
   const m = B.market || {}, M = B.model || {};
   let h = "";
   h += `<div class="banner info">${B.morning ? `<b>竞价已更新（${esc(B.morning.time)}）</b>：${esc(B.morning.note || "")}` :
@@ -508,6 +546,7 @@ document.addEventListener("click", (e) => {
   else if (d.pg) { S.paperGroup = d.pg; render(); }
   else if (d.bf) { S.paperBackfill = !S.paperBackfill; render(); }
   else if (d.bg) { S.btGroup = d.bg; render(); }
+  else if (d.sv) { S.sbView = d.sv; render(); }
   else if (d.ths) openThs(d.ths);
   else if (d.copy) onlyCopy(d.copy);
 });
