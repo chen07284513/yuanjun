@@ -81,6 +81,20 @@ p{margin:6px 0} ol,ul{padding-left:20px;margin:6px 0}
   background:rgba(20,23,31,.92);color:#fff;padding:9px 14px;border-radius:10px;font-size:13px;
   opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:86%;text-align:center}
 .toast.show{opacity:1}
+.idx{display:flex;align-items:center;gap:10px;margin-top:8px}
+.idx .num{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.idx .bar{flex:1;height:8px;background:#eee9e0;border-radius:6px;overflow:hidden}
+.idx .bar i{display:block;height:100%;border-radius:6px}
+.tier-高{color:var(--up)} .tier-中{color:var(--gold)} .tier-低{color:var(--mute)}
+.bg-高{background:var(--up)} .bg-中{background:var(--gold)} .bg-低{background:#b8b2a7}
+.secchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.secchip{background:#fdecec;color:#9b1c22;border-radius:8px;padding:4px 8px;font-size:12px}
+.secchip.cold{background:var(--chip);color:#4b5160}
+details{margin-top:8px} summary{cursor:pointer;color:#2b3a75;font-size:13px}
+.gaptbl td,.gaptbl th{padding:5px 4px;font-size:12px}
+.gaptbl tr.hit td{background:#fff3d6;font-weight:600}
+.vd{border-radius:10px;padding:8px 10px;margin-top:10px;font-size:13px}
+.vd.buy{background:#fde8e8;color:#9b1c22} .vd.skip{background:#f1f1f1;color:#555}
 .preview{background:#14171f;color:#ffd78a;font-size:12px;text-align:center;padding:6px}
 </style>
 </head>
@@ -92,7 +106,8 @@ p{margin:6px 0} ol,ul{padding-left:20px;margin:6px 0}
 </header>
 <main id="app"></main>
 <nav id="nav">
-  <button data-tab="today" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>今日</button>
+  <button data-tab="sb" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/></svg>首板</button>
+  <button data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>援军</button>
   <button data-tab="paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>模拟盘</button>
   <button data-tab="bt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="3" height="9"/><rect x="10.5" y="5" width="3" height="14"/><rect x="17" y="13" width="3" height="6"/></svg>回测</button>
   <button data-tab="about"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>说明</button>
@@ -100,7 +115,7 @@ p{margin:6px 0} ol,ul{padding-left:20px;margin:6px 0}
 <div class="toast" id="toast"></div>
 
 <script>
-const S = { tab: "today", todayFilter: "all", paperGroup: "base", paperBackfill: true, btGroup: "strict",
+const S = { tab: "sb", sbTrades: null, sb: null, todayFilter: "all", paperGroup: "base", paperBackfill: true, btGroup: "strict",
             latest: null, trades: null, bt: null, err: null };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -147,6 +162,8 @@ async function load() {
   try {
     const [latest, trades, bt] = await Promise.all([get("latest.json"), get("trades.json"), get("backtest.json")]);
     Object.assign(S, { latest, trades, bt });
+    try { S.sb = await get("shouban.json"); } catch (e) {}
+    try { S.sbTrades = await get("shouban_trades.json"); } catch (e) {}
   } catch (e) {
     try { S.bt = await get("backtest.json"); } catch (e2) {}
     S.err = "还没有每日数据。第一次自动运行完成后（交易日北京时间 16:40 之后）这里就会显示。";
@@ -211,6 +228,102 @@ function stockCard(t) {
       <button class="btn sec" data-copy="${code}">复制代码</button>
     </div>
   </div>`;
+}
+
+// ------------------------------------------------------------------ 首板
+function renderSb() {
+  const B = S.sb;
+  if (!B) return `<div class="banner info">首板数据还没生成。每个交易日 16:40 左右收盘后更新，9:26 左右用竞价价格再更新一次。</div>`;
+  const m = B.market || {}, M = B.model || {};
+  let h = "";
+  h += `<div class="banner info">${B.morning ? `<b>竞价已更新（${esc(B.morning.time)}）</b>：${esc(B.morning.note || "")}` :
+        `以下是 <b>${esc(B.asof)}</b> 收盘后的首板，计划<b>下一个交易日开盘</b>买入；9:26 左右会用竞价价格更新买入建议。`}</div>`;
+  h += `<div class="card"><div class="grid3">
+      <div><b>${m.shouban ?? "—"}</b><span>今日首板（非一字）</span></div>
+      <div><b>${m.limit_ups ?? "—"}</b><span>涨停家数</span></div>
+      <div><b>${m.zb_rate == null ? "—" : (m.zb_rate * 100).toFixed(0) + "%"}</b><span>炸板率</span></div></div>
+    <div class="small" style="margin-top:10px"><b>超跌反弹板块</b>（5日跌≥3%、今天涨≥2%）</div>
+    ${(B.rebound || []).length ? `<div class="secchips">${B.rebound.map(x => `<span class="secchip">${esc(x.name)} ${pct(x.ret)}（5日${pct(x.ret5)}，涨停${x.lu}）</span>`).join("")}</div>`
+      : `<div class="small mute">今天没有满足条件的板块，所以没有推荐。</div>`}
+    <details><summary>今天涨幅最大的板块</summary><div class="secchips">${(B.hot || []).map(x =>
+      `<span class="secchip cold">${esc(x.name)} ${pct(x.ret)}（5日${pct(x.ret5)}）</span>`).join("")}</div>
+      <p class="small mute">注意：前5天已经大涨的热门板块，里面的首板历史上次日买入是亏的。</p></details></div>`;
+  const picks = B.picks || [];
+  h += `<div class="h2">推荐首板 ${picks.length}</div>`;
+  if (!picks.length) h += `<div class="card empty">今天没有符合规则的首板。<br><span class="small">一年大约只有 20–30 个交易日会出信号，没有信号时不买。</span></div>`;
+  picks.forEach(p => h += sbCard(p, M));
+  const others = B.others || [];
+  if (B.others_count) {
+    h += `<details class="card"><summary>其他首板 ${B.others_count} 只（不符合板块条件，不推荐）</summary><div class="list">` +
+      others.map(o => `<div class="it"><div class="l"><b>${esc(o.name || o.code.slice(2))}</b> <span class="small mute">${o.code.slice(2)} · ${esc(o.sector)}</span><br>
+        <span class="small mute">${(o.why_not || []).map(esc).join("；")}</span></div>
+        <div class="r"><b class="tier-${o.tier}">${o.index}</b><br><span class="small mute">指数</span></div></div>`).join("") +
+      `</div><p class="small mute">这类首板历史上（2022–2026）次日开盘买入、第3天卖出，即使指数高的平均也在亏损。</p></details>`;
+  }
+  h += renderSbPaper();
+  const bt = M.bt;
+  if (bt) {
+    h += `<div class="card"><b>这个规则的历史回测</b>
+      <p class="small">${esc(bt.period)}：符合规则的首板 ${bt.n} 笔，胜率 ${(bt.win * 100).toFixed(0)}%，平均每笔 <b class="${cls(bt.mean)}">${pct(bt.mean, 1)}</b>（已扣费）。</p>
+      <p class="small">按“低开优先、每天最多5只”模拟账户：年化 <b class="${cls(bt.cagr)}">${pct(bt.cagr, 1)}</b>，最大回撤 <b class="down">${pct(bt.mdd, 0)}</b>；2022–2026 单独看年化 ${pct(bt.oos_cagr, 1)}。</p>
+      <p class="small">逐年：${Object.entries(bt.years).map(([y, v]) => `${y.slice(2)}年 <span class="${cls(v)}">${pct(v, 0)}</span>`).join("，")}</p>
+      <p class="small mute">对比：不看板块、所有首板次日开盘买，平均每笔 ${pct(bt.all_shouban_mean, 1)}。回测不代表未来，2026 年至今是亏的。</p></div>`;
+  }
+  return h;
+}
+
+function sbCard(p, M) {
+  const code = p.code.slice(2);
+  const ts = (M.tiers || {})[p.tier] || {};
+  const col = p.tier === "高" ? "var(--up)" : p.tier === "中" ? "var(--gold)" : "#b8b2a7";
+  let v = "";
+  if (p.verdict) {
+    const buy = p.verdict === "买入";
+    v = `<div class="vd ${buy ? "buy" : "skip"}">竞价 ${p.gap1 == null ? "—" : pct(p.gap1)} → <b>${esc(p.verdict)}</b>${p.order && buy ? `（第 ${p.order} 顺位）` : ""}</div>`;
+  }
+  const gb = (g) => g == null ? -1 : g <= -0.02 ? 0 : g <= 0 ? 1 : g <= 0.02 ? 2 : g <= 0.04 ? 3 : g <= 0.07 ? 4 : 5;
+  const hit = gb(p.gap1);
+  const gaps = (M.gaps || []).map((x, i) => `<tr class="${i === hit ? "hit" : ""}"><td>${esc(x.label)}</td><td>${(x.win * 100).toFixed(0)}%</td>
+      <td class="${cls(x.mean)}">${pct(x.mean, 1)}</td><td>${i === 5 ? "放弃" : "可买，低开优先"}</td></tr>`).join("");
+  return `<div class="card stock">
+    <div class="row"><div><span class="nm">${esc(p.name || code)}</span>${p.name ? `<span class="cd">${code}</span>` : ""}</div>
+      <span class="tag">${esc(p.sector)}</span></div>
+    <div class="idx"><div><div class="num tier-${p.tier}">${p.index}</div><div class="small mute">推荐指数</div></div>
+      <div style="flex:1"><div class="bar"><i style="width:${p.index}%;background:${col}"></i></div>
+      <div class="small" style="margin-top:4px"><b class="tier-${p.tier}">${p.tier}档</b> · 同档历史胜率 <b>${ts.win == null ? "—" : (ts.win * 100).toFixed(0) + "%"}</b>，平均 <b class="${cls(ts.mean)}">${pct(ts.mean, 1)}</b></div></div></div>
+    <div class="kv">
+      <div><span>板块今天</span><b class="${cls(p.sec_ret)}">${pct(p.sec_ret)}</b></div>
+      <div><span>板块5日</span><b class="${cls(p.sec_ret5)}">${pct(p.sec_ret5)}</b></div>
+      <div><span>板块排名/涨停</span><b>${p.sec_rank} / ${p.sec_lu}只</b></div>
+      <div><span>个股20日</span><b class="${cls(p.ret20)}">${pct(p.ret20)}</b></div>
+      <div><span>成交额</span><b>${num(p.amt_yi, 1)}亿</b></div>
+      <div><span>板块龙头</span><b>${p.leader ? "是" : "否"}</b></div>
+    </div>
+    ${v}
+    <details><summary>次日分析：按竞价开盘怎么做</summary>
+      <table class="gaptbl"><tr><th>次日竞价</th><th>历史胜率</th><th>平均</th><th>规则</th></tr>${gaps}</table>
+      <p class="small mute">开盘涨停买不进；高开超过7%放弃；其余按开盘价买入，同一天低开的优先，最多5只；第3个交易日收盘卖出。收盘价 ${num(p.close)}。</p></details>
+    <div class="btns"><button class="btn main" data-ths="${code}">在同花顺打开</button><button class="btn sec" data-copy="${code}">复制代码</button></div>
+  </div>`;
+}
+
+function renderSbPaper() {
+  const tr = Object.values(S.sbTrades?.trades || {});
+  if (!tr.length) return "";
+  const closed = tr.filter(t => t.status === "closed").sort((a, b) => a.exit_date.localeCompare(b.exit_date));
+  const open = tr.filter(t => t.status === "open"), pend = tr.filter(t => t.status === "pending");
+  const n = closed.length, win = n ? closed.filter(t => t.ret > 0).length / n : null, mean = n ? closed.reduce((s, t) => s + t.ret, 0) / n : null;
+  let h = `<div class="h2">首板模拟盘</div><div class="card"><div class="grid3">
+    <div><b>${n}</b><span>已结束</span></div><div><b>${win == null ? "—" : (win * 100).toFixed(0) + "%"}</b><span>胜率</span></div>
+    <div><b class="${cls(mean)}">${pct(mean, 2)}</b><span>平均每笔</span></div></div>
+    ${closed.length >= 2 ? curveSvg(closed) : ""}
+    <p class="small mute">从上线起自动记录：次日开盘价买入（开盘涨停或高开超7%不买，每天最多5只、低开优先），第3个交易日收盘卖出，已扣费。</p></div>`;
+  const row = (t, right) => `<div class="it"><div class="l"><b>${esc(t.name || t.code.slice(2))}</b> <span class="small mute">${t.code.slice(2)} · ${esc(t.sector || "")}</span><br><span class="small mute">${right[0]}</span></div><div class="r">${right[1]}</div></div>`;
+  if (pend.length) h += `<div class="small mute" style="margin:6px 4px">待次日开盘买入 ${pend.length}</div><div class="card list">${pend.map(t => row(t, [`${t.date} 首板 · 待次日开盘`, `<span class="small mute">指数 ${t.index}</span>`])).join("")}</div>`;
+  if (open.length) h += `<div class="small mute" style="margin:6px 4px">持有中 ${open.length}</div><div class="card list">${open.map(t => row(t, [`${t.entry_date} 买入 ${num(t.entry)} · 已持 ${t.held ?? 0} 天`, `<b class="${cls(t.ret)}">${pct(t.ret)}</b>`])).join("")}</div>`;
+  if (closed.length) h += `<details class="card"><summary>已结束 ${closed.length} 笔</summary><div class="list">${[...closed].reverse().slice(0, 60).map(t => row(t,
+      [`${t.entry_date} → ${t.exit_date} · ${num(t.entry)} → ${num(t.exit)}`, `<b class="${cls(t.ret)}">${pct(t.ret)}</b>`])).join("")}</div></details>`;
+  return h;
 }
 
 // ------------------------------------------------------------------ 模拟盘
@@ -316,7 +429,15 @@ function btCurve(curve) {
 
 // ------------------------------------------------------------------ 说明
 function renderAbout() {
-  return `<div class="card"><b>这是什么</b>
+  return `<div class="card"><b>首板（超跌板块共振首板）</b><ol class="small">
+    <li>今天首次涨停（前5天没涨停，不是一字板），上市满60天，不含科创板和ST</li>
+    <li>个股前20天是跌的（低位）</li>
+    <li>所属行业（东方财富二级行业）过去5天跌≥3%，但今天平均涨≥2%（集体反弹）</li>
+    <li>下一个交易日开盘买：开盘涨停买不进、高开超7%放弃；低开优先，每天最多5只</li>
+    <li>第3个交易日收盘卖出</li></ol>
+    <p class="small"><b>推荐指数</b>：用 2016–2026 年全部首板训练的打分（看板块5日/当天涨幅、板块排名、个股位置、成交额、市场涨停数和炸板率等），0–100，越高越好；分高/中/低三档，胜率是 2022–2026 年样本外检验的结果。</p>
+    <p class="small"><b>更新时间</b>：收盘后 16:40 左右出名单；次日 9:26 左右用竞价价格更新“买入/放弃”（利雅得时间 4:26）。GitHub 定时可能晚几分钟。</p></div>
+  <div class="card"><b>这是什么</b>
     <p>把抖音“狙盘手”的<b>援军战法</b>写成固定规则，每个交易日收盘后自动选股，并按规则<b>模拟买卖、记录真实涨跌</b>。用来观察这个战法到底灵不灵，<b>不是投资建议</b>。</p></div>
   <div class="card"><b>股票池</b><p class="small">沪深主板 + 创业板。<b>不含科创板</b>、北交所和 ST 股。</p></div>
   <div class="card"><b>选股规则（原版）</b><ol class="small">
@@ -343,10 +464,16 @@ function renderAbout() {
 function render() {
   const L = S.latest;
   const hm = L && L.generated ? L.generated.slice(11) : "";
+  if (S.tab === "sb" && S.sb) {
+    $("#sub").textContent = `首板数据 ${S.sb.asof} 收盘` + (S.sb.generated_morning ? ` · 竞价更新 ${S.sb.generated_morning.slice(11)}` : "");
+    $("#app").innerHTML = renderSb();
+    document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+    return;
+  }
   $("#sub").textContent = L && L.asof
     ? (L.mode === "intraday" ? `${L.asof} 盘中 ${hm} 更新（北京时间）` : `数据日期 ${L.asof} · 收盘后更新于 ${L.generated}（北京时间）`)
     : (S.err ? "等待首次运行" : "加载中…");
-  const f = { today: renderToday, paper: renderPaper, bt: renderBt, about: renderAbout }[S.tab];
+  const f = { sb: renderSb, today: renderToday, paper: renderPaper, bt: renderBt, about: renderAbout }[S.tab] || renderSb;
   $("#app").innerHTML = f();
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
 }

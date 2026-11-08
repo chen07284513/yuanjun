@@ -12,6 +12,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from strategy import cost_rate, find_signals, simulate_exit  # noqa: E402
+import shouban  # noqa: E402
 
 LMT = 80          # bars fetched per stock
 BACKFILL = 10     # on first run, also record signals from the last N trading days
@@ -105,9 +106,11 @@ def r(x, n=4):
 
 
 def market_mode(now):
-    """'intraday' while A-shares are trading (Beijing 09:30-15:00 on weekdays), else 'close'."""
+    """'morning' before 09:50 (竞价检查), 'intraday' 09:50-15:00 on weekdays, else 'close'."""
     hm = now.hour * 100 + now.minute
-    return "intraday" if now.weekday() < 5 and 930 <= hm < 1500 else "close"
+    if now.weekday() < 5 and 900 <= hm < 950:
+        return "morning"
+    return "intraday" if now.weekday() < 5 and 950 <= hm < 1500 else "close"
 
 
 def adj_factor(tr, A, t0, j, tpos):
@@ -144,8 +147,9 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
         if n:
             names[c] = n
     coverage = len(kl) / max(1, len(codes))
-    # drop ST / delisting names
-    kl = {c: v for c, v in kl.items() if "ST" not in names.get(c, "") and "退" not in names.get(c, "")}
+    # ST / delisting names stay in the panel (sector and market statistics, as in the backtest)
+    # but are never picked
+    st_codes = {c for c in kl if "ST" in names.get(c, "") or "退" in names.get(c, "")}
     try:
         idx_bars = fetcher.index_kline()
     except Exception as e:  # noqa: BLE001
@@ -196,7 +200,7 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
             stop, streak, dd = (base.get(key) or strict.get(key))
             code = pcodes[j]
             k = f"{code}|{cal[t]}"
-            if k in book["trades"]:
+            if k in book["trades"] or code in st_codes:
                 continue
             entry = float(A["c"][t, j])  # intraday: the latest price at run time; after close: the close
             backfill = t < T - 1 and not last_date
@@ -238,6 +242,14 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
 
     with open(tpath, "w", encoding="utf-8") as f:
         json.dump(book, f, ensure_ascii=False, separators=(",", ":"))
+    if mode == "close" and status == "ok":
+        try:
+            P2 = shouban.Panel(cal, pcodes, A, chg, lim, first_rel, mkt[1], shouban.load_industry())
+            shouban.run_close(P2, names, st_codes, out_dir, now, log=log)
+        except Exception as e:  # noqa: BLE001
+            log(f"首板 failed: {e!r}")
+            if os.environ.get("STRICT"):
+                raise
     with open(os.path.join(HERE, "names.json"), "w", encoding="utf-8") as f:
         json.dump(names, f, ensure_ascii=False, separators=(",", ":"))
     latest = dict(
@@ -258,6 +270,10 @@ if __name__ == "__main__":
     from fetch import LiveFetcher
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "docs", "data")
     now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+    if market_mode(now) == "morning":
+        from fetch import quotes
+        shouban.run_morning(out, quotes, now)
+        sys.exit(0)
     # 盘中那次必须在 15:00 前出结果：最多抓 7 分钟数据
     fetcher = LiveFetcher(deadline=420 if market_mode(now) == "intraday" else 1200)
     latest, _ = run(fetcher, out, now=now)

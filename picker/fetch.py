@@ -165,3 +165,39 @@ class LiveFetcher:
             self.log(f"eastmoney index failed: {e!r}")
         bars, _ = tx_kline("sh000985", self.lmt)
         return bars
+
+
+# ---------------------------------------------------------------- morning quotes (auction / open price)
+def quotes(codes):
+    """{code: (open_or_auction_price, prev_close)} — Eastmoney first, Tencent as backup."""
+    out = {}
+    try:
+        secids = ",".join(("1." if c.startswith("sh") else "0.") + c[2:] for c in codes)
+        txt = _get("https://push2.eastmoney.com/api/qt/ulist.np/get",
+                   dict(fltt=2, invt=2, secids=secids, fields="f2,f12,f13,f17,f18",
+                        ut="bd1d9ddb04089700cf9c27f6f7426281"), referer="https://quote.eastmoney.com/")
+        for d in (json.loads(txt).get("data") or {}).get("diff") or []:
+            code = ("sh" if int(d["f13"]) == 1 else "sz") + str(d["f12"])
+            o = d.get("f17") if isinstance(d.get("f17"), (int, float)) and d.get("f17") > 0 else d.get("f2")
+            pc = d.get("f18")
+            if isinstance(o, (int, float)) and isinstance(pc, (int, float)) and o > 0 and pc > 0:
+                out[code] = (float(o), float(pc))
+    except Exception:  # noqa: BLE001
+        pass
+    miss = [c for c in codes if c not in out]
+    if miss:
+        try:
+            txt = _get("https://qt.gtimg.cn/q=" + ",".join(miss))
+            for line in txt.split(";"):
+                if "~" not in line:
+                    continue
+                key = line.split("=")[0].strip().replace("v_", "")
+                f = line.split('"')[1].split("~")
+                o, pc = float(f[5] or 0), float(f[4] or 0)
+                if o <= 0:
+                    o = float(f[3] or 0)
+                if o > 0 and pc > 0:
+                    out[key] = (o, pc)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
