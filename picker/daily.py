@@ -284,7 +284,17 @@ if __name__ == "__main__":
         shouban.run_morning(out, quotes, now)
         sys.exit(0)
     # 盘中那次必须在 15:00 前出结果：最多抓 7 分钟数据
-    fetcher = LiveFetcher(deadline=420 if market_mode(now) == "intraday" else 1200)
+    mode = market_mode(now)
+    fetcher = LiveFetcher(deadline=420 if mode == "intraday" else 900)
     latest, _ = run(fetcher, out, now=now)
+    # 收盘后那次如果数据源临时出问题（限流/502），等几分钟换一台出口重试，最多再试两次
+    tries = 0
+    while mode == "close" and latest["status"] != "ok" and tries < 2:
+        tries += 1
+        print(f"data incomplete ({latest.get('coverage')}), retry {tries} in 180s", flush=True)
+        import time as _t
+        _t.sleep(180)
+        now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+        latest, _ = run(LiveFetcher(deadline=900), out, now=now)
     if latest["status"] != "ok" and latest["coverage"] < 0.3:
         sys.exit(1)
