@@ -30,14 +30,15 @@ jobs:
           START: ${{ inputs.start }}
           END: ${{ inputs.end }}
         run: |
-          if [ "$MODE" = "probe" ]; then python -u research/probe_main.py
+          if [ "$MODE" = "ztpool" ]; then python -u research/probe_ztpool.py
+          elif [ "$MODE" = "probe" ]; then python -u research/probe_main.py
           elif [ "$MODE" = "holdings" ]; then python -u research/fetch_holdings.py
           elif [ "$MODE" = "boards" ]; then python -u research/fetch_boards.py
           else python -u research/fetch_lhb.py "$MODE" "$START" "$END"; fi
       - name: 保存到 research-data 分支
-        if: inputs.mode == 'full' || inputs.mode == 'boards' || inputs.mode == 'holdings'
+        if: inputs.mode == 'full' || inputs.mode == 'boards' || inputs.mode == 'holdings' || inputs.mode == 'ztpool'
         run: |
-          mkdir -p /tmp/out && cp research/data/*.csv.gz /tmp/out/
+          mkdir -p /tmp/out && cp research/data/*.csv.gz research/data/*.js /tmp/out/ 2>/dev/null || true
           git config user.name "research-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git fetch origin research-data 2>/dev/null; then
@@ -46,7 +47,7 @@ jobs:
             git checkout --orphan research-data
             git rm -rf -q . || true
           fi
-          cp /tmp/out/*.csv.gz .
-          git add *.csv.gz
+          cp /tmp/out/* .
+          for f in /tmp/out/*; do git add "$(basename "$f")"; done
           git commit -m "research data: ${{ inputs.mode }}" || true
           git push origin research-data
