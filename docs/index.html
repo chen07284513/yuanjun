@@ -23,7 +23,12 @@ html,body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",sans-serif}
 header{position:sticky;top:0;z-index:5;background:var(--accent);color:#fff;
   padding:calc(var(--safe-top) + 12px) 16px 12px}
-header h1{margin:0;font-size:19px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.hdrbtn{position:absolute;right:12px;top:calc(var(--safe-top) + 12px);background:rgba(255,255,255,.14);color:#fff;border:0;
+  border-radius:10px;padding:7px 11px;font-size:13px;font-weight:600}
+.hdrbtn:disabled{opacity:.6}
+.live{background:#fff7f7;border-radius:10px;padding:8px 10px;margin-top:10px;font-size:13px}
+.live .flag{font-weight:700}
+header h1{margin:0;padding-right:84px;font-size:19px;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
 header h1 small{font-size:12px;font-weight:400;opacity:.65}
 header .sub{font-size:12px;opacity:.75;margin-top:2px}
 main{padding:12px 12px calc(84px + var(--safe-bot));max-width:640px;margin:0 auto}
@@ -104,6 +109,7 @@ details{margin-top:8px} summary{cursor:pointer;color:#2b3a75;font-size:13px}
 <body>
 <div id="preview" class="preview" hidden></div>
 <header>
+  <button id="rf" class="hdrbtn" data-refresh="1">⟳ 更新</button>
   <h1>援军观察 <small>模拟盘 · 非投资建议</small></h1>
   <div class="sub" id="sub">加载中…</div>
 </header>
@@ -226,6 +232,7 @@ function stockCard(t) {
       <div><span>撤军线(止损)</span><b class="down">${num(t.stop)}</b><span class="down">${pct(stopDist)}</span></div>
       <div><span>止盈价</span><b class="up">${num(t.tp)}</b><span class="up">+8.0%</span></div>
     </div>
+    ${liveLine(t, qOf(t.code))}
     <div class="btns">
       <button class="btn main" data-ths="${code}">在同花顺打开</button>
       <button class="btn sec" data-copy="${code}">复制代码</button>
@@ -286,6 +293,85 @@ function renderLadder(B) {
   if ((D.broken || []).length) h += `<details class="card"><summary>断板 ${D.broken_count} 只</summary><div class="list">${D.broken.map(x =>
       `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)} · 昨天${x.k}板</span></div><div class="r"><b class="${cls(x.chg)}">${pct(x.chg)}</b></div></div>`).join("")}</div></details>`;
   return h;
+}
+
+// ------------------------------------------------------------------ 一键更新：服务器数据 + 实时行情
+S.q = {}; S.qTime = null;
+const bjTime = () => { const n = bjNow(); return [n.getHours(), n.getMinutes(), n.getSeconds()].map(v => String(v).padStart(2, "0")).join(":"); };
+async function fetchQuotes(codes) {
+  const uniq = [...new Set(codes)].filter(Boolean);
+  for (let i = 0; i < uniq.length; i += 80) {
+    const secids = uniq.slice(i, i + 80).map(c => (c.startsWith("sh") ? "1." : "0.") + c.slice(2)).join(",");
+    const u = await jsonp("https://push2.eastmoney.com/api/qt/ulist.np/get",
+      { fltt: 2, invt: 2, secids, fields: "f2,f3,f12,f13,f15,f16,f17,f18", ut: "bd1d9ddb04089700cf9c27f6f7426281" });
+    const n = (v) => typeof v === "number" && v > 0 ? v : null;
+    (((u || {}).data || {}).diff || []).forEach(r => {
+      S.q[(+r.f13 === 1 ? "sh" : "sz") + r.f12] = { p: n(r.f2), chg: typeof r.f3 === "number" ? r.f3 / 100 : null,
+        hi: n(r.f15), lo: n(r.f16), open: n(r.f17), pc: n(r.f18) };
+    });
+  }
+  S.qTime = bjTime();
+}
+function setRf() { const b = $("#rf"); if (b) { b.disabled = !!S.refreshing; b.textContent = S.refreshing ? "更新中…" : "⟳ 更新"; } }
+async function refreshAll() {
+  if (S.refreshing || window.__DATA__) return;
+  S.refreshing = true; setRf();
+  let msg = "";
+  try {
+    await load();
+    if (S.tab === "sb" && S.sbView === "ladder") {
+      await liveUpdate();
+      msg = S.liveErr ? S.liveErr : "连板梯队已实时更新";
+    } else {
+      const codes = [];
+      if (S.tab === "sb") {
+        (S.sb?.picks || []).forEach(p => codes.push(p.code));
+        Object.values(S.sbTrades?.trades || {}).filter(t => t.status === "open" || t.status === "pending").forEach(t => codes.push(t.code));
+      } else if (S.tab === "today") {
+        (S.latest?.today || []).forEach(k => codes.push(k.split("|")[0]));
+      } else if (S.tab === "paper") {
+        trList().filter(t => t.status === "open").forEach(t => codes.push(t.code));
+      }
+      if (codes.length) { await fetchQuotes(codes); msg = `数据和行情已更新 ${S.qTime}`; }
+      else msg = "已加载最新数据";
+    }
+  } catch (e) {
+    msg = "行情更新失败：" + (e.message || e) + "，服务器数据已刷新";
+  } finally {
+    S.refreshing = false; setRf(); render(); toast(msg);
+  }
+}
+const qOf = (code) => S.q[code];
+const limOf = (code) => code.slice(2).startsWith("30") ? 0.20 : 0.10;
+// 首板：如果拿到的是信号日之后那个交易日的行情（昨收≈信号日收盘价），就按规则在手机上算“买入/放弃”
+function sbLiveVerdicts(picks) {
+  const out = {}, cand = [];
+  picks.forEach(p => {
+    const q = qOf(p.code);
+    if (!q || !q.pc || !p.close) return;
+    const nextDay = Math.abs(q.pc / p.close - 1) < 0.003;
+    if (!nextDay) { out[p.code] = { sameDay: true, q }; return; }
+    const o = q.open || q.p;
+    if (!o) return;
+    const gap = o / q.pc - 1;
+    const r = { gap, q, auction: !q.open, fromOpen: q.p && q.open ? q.p / q.open - 1 : null };
+    if (gap >= limOf(p.code) - 0.005) r.verdict = "开盘涨停，买不进";
+    else if (gap > 0.07) r.verdict = "高开超过7%，放弃";
+    else cand.push([gap, p.code]);
+    out[p.code] = r;
+  });
+  cand.sort((a, b) => a[0] - b[0]).forEach(([g, c], i) => { out[c].verdict = i < 5 ? "买入" : "备选（已满5只）"; out[c].order = i + 1; });
+  return out;
+}
+function liveLine(t, q) {
+  // 援军 / 模拟盘：现价、离止损/止盈多远、今天是否已触发
+  if (!q || !q.p) return "";
+  const flags = [];
+  if (t.stop && q.lo && q.lo < t.stop) flags.push(`<span class="flag down">今天盘中已跌破撤军线</span>`);
+  if (t.tp && q.hi && q.hi >= t.tp) flags.push(`<span class="flag up">今天已触及止盈价</span>`);
+  return `<div class="live">实时 ${esc(S.qTime || "")}：现价 <b>${num(q.p)}</b>（今日 <span class="${cls(q.chg)}">${pct(q.chg)}</span>）
+    ${t.entry ? ` · 较信号价 <b class="${cls(q.p / t.entry - 1)}">${pct(q.p / t.entry - 1)}</b>` : ""}
+    ${t.stop ? ` · 距撤军线 ${pct(q.p / t.stop - 1)}` : ""}${flags.length ? "<br>" + flags.join("　") : ""}</div>`;
 }
 
 // ------------------------------------------------------------------ 实时连板（直接从东方财富取数，JSONP）
@@ -379,6 +465,7 @@ async function liveUpdate() {
 
 function renderFirst(B) {
   const m = B.market || {}, M = B.model || {};
+  S.sbLive = sbLiveVerdicts(B.picks || []);
   let h = "";
   h += `<div class="banner info">${B.morning ? `<b>竞价已更新（${esc(B.morning.time)}）</b>：${esc(B.morning.note || "")}` :
         `以下是 <b>${esc(B.asof)}</b> 收盘后的首板，计划<b>下一个交易日开盘</b>买入；9:26 左右会用竞价价格更新买入建议。`}</div>`;
@@ -425,12 +512,19 @@ function sbCard(p, M) {
   const ts = (M.tiers || {})[p.tier] || {};
   const col = p.tier === "高" ? "var(--up)" : p.tier === "中" ? "var(--gold)" : "#b8b2a7";
   let v = "";
-  if (p.verdict) {
+  const lv = (S.sbLive || {})[p.code];
+  if (lv && lv.sameDay) {
+    v = `<div class="live">实时 ${esc(S.qTime || "")}：现价 <b>${num(lv.q.p)}</b>（今日 <span class="${cls(lv.q.chg)}">${pct(lv.q.chg)}</span>）。下一个交易日 9:25 后再点更新，就能看到竞价和买入建议。</div>`;
+  } else if (lv && lv.verdict) {
+    const buy = lv.verdict === "买入";
+    v = `<div class="vd ${buy ? "buy" : "skip"}">${lv.auction ? "竞价" : "开盘"} ${pct(lv.gap)} → <b>${esc(lv.verdict)}</b>${lv.order && buy ? `（第 ${lv.order} 顺位）` : ""}
+      <br><span class="small">实时 ${esc(S.qTime || "")} · 现价 ${num(lv.q.p)}${lv.fromOpen != null ? `，较开盘 <b class="${cls(lv.fromOpen)}">${pct(lv.fromOpen)}</b>` : ""}</span></div>`;
+  } else if (p.verdict) {
     const buy = p.verdict === "买入";
     v = `<div class="vd ${buy ? "buy" : "skip"}">竞价 ${p.gap1 == null ? "—" : pct(p.gap1)} → <b>${esc(p.verdict)}</b>${p.order && buy ? `（第 ${p.order} 顺位）` : ""}</div>`;
   }
   const gb = (g) => g == null ? -1 : g <= -0.02 ? 0 : g <= 0 ? 1 : g <= 0.02 ? 2 : g <= 0.04 ? 3 : g <= 0.07 ? 4 : 5;
-  const hit = gb(p.gap1);
+  const hit = gb(lv && lv.gap != null ? lv.gap : p.gap1);
   const gaps = (M.gaps || []).map((x, i) => `<tr class="${i === hit ? "hit" : ""}"><td>${esc(x.label)}</td><td>${(x.win * 100).toFixed(0)}%</td>
       <td class="${cls(x.mean)}">${pct(x.mean, 1)}</td><td>${i === 5 ? "放弃" : "可买，低开优先"}</td></tr>`).join("");
   return `<div class="card stock">
@@ -500,7 +594,10 @@ function renderSbPaper() {
     <p class="small mute">从上线起自动记录：次日开盘价买入（开盘涨停或高开超7%不买，每天最多5只、低开优先），第3个交易日收盘卖出，已扣费。</p></div>`;
   const row = (t, right) => `<div class="it"><div class="l"><b>${esc(t.name || t.code.slice(2))}</b> <span class="small mute">${t.code.slice(2)} · ${esc(t.sector || "")}</span><br><span class="small mute">${right[0]}</span></div><div class="r">${right[1]}</div></div>`;
   if (pend.length) h += `<div class="small mute" style="margin:6px 4px">待次日开盘买入 ${pend.length}</div><div class="card list">${pend.map(t => row(t, [`${t.date} 首板 · 待次日开盘`, `<span class="small mute">指数 ${t.index}</span>`])).join("")}</div>`;
-  if (open.length) h += `<div class="small mute" style="margin:6px 4px">持有中 ${open.length}</div><div class="card list">${open.map(t => row(t, [`${t.entry_date} 买入 ${num(t.entry)} · 已持 ${t.held ?? 0} 天`, `<b class="${cls(t.ret)}">${pct(t.ret)}</b>`])).join("")}</div>`;
+  if (open.length) h += `<div class="small mute" style="margin:6px 4px">持有中 ${open.length}</div><div class="card list">${open.map(t => { const q = qOf(t.code);
+    const live = q && q.p && t.entry ? q.p / t.entry - 1 : null;
+    return row(t, [`${t.entry_date} 买入 ${num(t.entry)} · 已持 ${t.held ?? 0} 天${live != null ? ` · 实时 ${num(q.p)}` : ""}`,
+      `<b class="${cls(live ?? t.ret)}">${pct(live ?? t.ret)}</b>`]); }).join("")}</div>`;
   if (closed.length) h += `<details class="card"><summary>已结束 ${closed.length} 笔</summary><div class="list">${[...closed].reverse().slice(0, 60).map(t => row(t,
       [`${t.entry_date} → ${t.exit_date} · ${num(t.entry)} → ${num(t.exit)}`, `<b class="${cls(t.ret)}">${pct(t.ret)}</b>`])).join("")}</div></details>`;
   return h;
@@ -538,7 +635,9 @@ function renderPaper() {
   h += `<div class="h2">持有中 ${open.length}</div><div class="card list">`;
   h += open.length ? open.map(t => `<div class="it"><div class="l"><b>${esc(t.name || t.code.slice(2))}</b>
       ${t.name ? `<span class="small mute"> ${t.code.slice(2)}</span>` : ""}<br><span class="small mute">${t.date} 买入 · 已持 ${t.held ?? 0} 天 · 止损 ${num(t.stop)}</span></div>
-      <div class="r"><b class="${cls(t.ret)}">${pct(t.ret)}</b><br><span class="small mute">现价 ${num(t.last)}</span></div></div>`).join("")
+      <div class="r">${(() => { const q = qOf(t.code); if (q && q.p && t.entry) { const rr = q.p / t.entry - 1;
+        return `<b class="${cls(rr)}">${pct(rr)}</b><br><span class="small mute">实时 ${num(q.p)}</span>${t.stop && q.lo && q.lo < t.stop ? `<br><span class="small down">已破撤军线</span>` : t.tp && q.hi && q.hi >= t.tp ? `<br><span class="small up">触及止盈</span>` : ""}`; }
+        return `<b class="${cls(t.ret)}">${pct(t.ret)}</b><br><span class="small mute">现价 ${num(t.last)}</span>`; })()}</div></div>`).join("")
     : `<div class="empty">没有持有中的模拟仓位</div>`;
   h += `</div>`;
   const done = [...closed].reverse().slice(0, 60);
@@ -638,6 +737,7 @@ function renderAbout() {
   <div class="card"><b>添加到手机桌面</b><ul class="small">
     <li>iPhone：用 Safari 打开 → 底部“分享”按钮 → “添加到主屏幕”</li>
     <li>安卓：用 Chrome 打开 → 右上角菜单 → “添加到主屏幕 / 安装应用”</li></ul></div>
+  <div class="card"><b>⟳ 更新按钮</b><p class="small">右上角的“更新”在每个页面都能点：先重新加载服务器上的最新数据，再按页面拉实时行情——首板推荐会用竞价/开盘价直接算出“买入/放弃”，援军和模拟盘会显示现价、盈亏和是否已破撤军线或触及止盈，连板梯队会实时重建。行情直接来自东方财富，交易时间内会变。</p></div>
   <div class="card"><b>同花顺按钮</b><p class="small">点“在同花顺打开”会先复制股票代码，再打开同花顺 app，在搜索框粘贴即可。没装同花顺时不会有反应。</p></div>
   <p class="small mute" style="margin:8px 4px">风险提示：回测和模拟盘结果都不代表未来收益。股市有风险，任何真实交易请自行判断。</p>`;
 }
@@ -648,14 +748,14 @@ function render() {
   const hm = L && L.generated ? L.generated.slice(11) : "";
   if (S.tab === "sb" && S.sb) {
     $("#sub").textContent = (S.sbView === "ladder" && S.live) ? `连板实时：${S.live.label}` :
-      `首板数据 ${S.sb.asof} 收盘` + (S.sb.generated_morning ? ` · 竞价更新 ${S.sb.generated_morning.slice(11)}` : "");
+      `首板数据 ${S.sb.asof} 收盘` + (S.sb.generated_morning ? ` · 竞价更新 ${S.sb.generated_morning.slice(11)}` : "") + (S.qTime ? ` · 行情 ${S.qTime}` : "");
     $("#app").innerHTML = renderSb();
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
     return;
   }
-  $("#sub").textContent = L && L.asof
+  $("#sub").textContent = (L && L.asof
     ? (L.mode === "intraday" ? `${L.asof} 盘中 ${hm} 更新（北京时间）` : `数据日期 ${L.asof} · 收盘后更新于 ${L.generated}（北京时间）`)
-    : (S.err ? "等待首次运行" : "加载中…");
+    : (S.err ? "等待首次运行" : "加载中…")) + (S.qTime && (S.tab === "today" || S.tab === "paper") ? ` · 行情 ${S.qTime}` : "");
   const f = { sb: renderSb, today: renderToday, paper: renderPaper, bt: renderBt, about: renderAbout }[S.tab] || renderSb;
   $("#app").innerHTML = f();
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
@@ -673,6 +773,7 @@ document.addEventListener("click", (e) => {
   else if (d.bg) { S.btGroup = d.bg; render(); }
   else if (d.sv) { S.sbView = d.sv; render(); }
   else if (d.live) liveUpdate();
+  else if (d.refresh) refreshAll();
   else if (d.ths) openThs(d.ths);
   else if (d.copy) onlyCopy(d.copy);
 });
