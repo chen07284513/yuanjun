@@ -30,10 +30,12 @@ jobs:
           START: ${{ inputs.start }}
           END: ${{ inputs.end }}
         run: |
-          if [ "$MODE" = "boards" ]; then python -u research/fetch_boards.py
+          if [ "$MODE" = "probe" ]; then python -u research/probe_main.py
+          elif [ "$MODE" = "holdings" ]; then python -u research/fetch_holdings.py
+          elif [ "$MODE" = "boards" ]; then python -u research/fetch_boards.py
           else python -u research/fetch_lhb.py "$MODE" "$START" "$END"; fi
       - name: 保存到 research-data 分支
-        if: inputs.mode == 'full' || inputs.mode == 'boards'
+        if: inputs.mode == 'full' || inputs.mode == 'boards' || inputs.mode == 'holdings'
         run: |
           mkdir -p /tmp/out && cp research/data/*.csv.gz /tmp/out/
           git config user.name "research-bot"
