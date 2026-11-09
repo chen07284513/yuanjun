@@ -246,7 +246,15 @@ def run(fetcher, out_dir, log=print, now=None, mode=None):
         try:
             P2 = shouban.Panel(cal, pcodes, A, chg, lim, first_rel, mkt[1], shouban.load_industry(),
                                shouban.load_concepts())
-            shouban.run_close(P2, names, st_codes, out_dir, now, log=log)
+            flows = getattr(fetcher, "flows", {}) or {}
+            shouban.run_close(P2, names, st_codes, out_dir, now, log=log, flows=flows)
+            if flows:  # keep a daily record of main-force flows for future backtests
+                import gzip as _gz
+                os.makedirs(os.path.join(HERE, "flows"), exist_ok=True)
+                with _gz.open(os.path.join(HERE, "flows", f"{asof}.csv.gz"), "wt", encoding="utf-8") as fh:
+                    fh.write("code,main_net,main_pct,main5\n")
+                    for c, (a1, a2, a3) in sorted(flows.items()):
+                        fh.write(f"{c},{a1 if a1 is not None else ''},{a2 if a2 is not None else ''},{a3 if a3 is not None else ''}\n")
         except Exception as e:  # noqa: BLE001
             log(f"首板 failed: {e!r}")
             if os.environ.get("STRICT"):

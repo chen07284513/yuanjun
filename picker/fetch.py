@@ -31,13 +31,16 @@ def _get(url, params=None, referer=None, tries=2, timeout=6):
 
 
 # ---------------------------------------------------------------- universe
+FLOWS = {}  # code -> (主力净流入 元, 主力净占比 %, 5日主力净流入 元), filled by em_universe
+
+
 def em_universe():
-    """[(code like 'sh600519', name)] for SH main/STAR and SZ main/ChiNext."""
+    """[(code like 'sh600519', name)] for SH main/STAR and SZ main/ChiNext. Also fills FLOWS."""
     out, pn = [], 1
     while True:
         txt = _get("https://push2.eastmoney.com/api/qt/clist/get", dict(
             pn=pn, pz=100, po=1, np=1, fltt=2, invt=2, fid="f12",
-            fs="m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23", fields="f12,f13,f14",
+            fs="m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23", fields="f12,f13,f14,f62,f184,f164",
             ut="bd1d9ddb04089700cf9c27f6f7426281"), referer="https://quote.eastmoney.com/")
         d = json.loads(txt).get("data") or {}
         rows = d.get("diff") or []
@@ -46,6 +49,8 @@ def em_universe():
         for r in rows:
             mk = "sh" if int(r["f13"]) == 1 else "sz"
             out.append((mk + str(r["f12"]), str(r["f14"])))
+            num = lambda v: float(v) if isinstance(v, (int, float)) else None  # noqa: E731
+            FLOWS[mk + str(r["f12"])] = (num(r.get("f62")), num(r.get("f184")), num(r.get("f164")))
         total = int(d.get("total") or 0)
         if not rows or len(out) >= total:
             break
@@ -97,6 +102,7 @@ class LiveFetcher:
     def universe(self):
         try:
             u = em_universe()
+            self.flows = dict(FLOWS)
             if len(u) > 4000:
                 return u, "eastmoney"
             self.log(f"universe too small from eastmoney: {len(u)}")

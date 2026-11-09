@@ -265,7 +265,8 @@ function renderLadder(B) {
     const hv = hist(k);
     h += `<div class="h2">${k}板（${groups[k].length}只）<span class="small mute" style="font-weight:400"> · 历史：明天晋级 ${hv.promote == null ? "—" : (hv.promote * 100).toFixed(0) + "%"}，开盘追买平均 ${pct(hv.r_c2, 1)}、胜率 ${hv.win_c2 == null ? "—" : (hv.win_c2 * 100).toFixed(0) + "%"}</span></div><div class="card list">`;
     h += groups[k].map(x => `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)}</span>
-        ${x.yizi ? `<span class="tag">一字</span>` : ""}<br><span class="small mute">${esc(x.sector)}${x.concept ? " · " + esc(x.concept) : ""} · 成交 ${num(x.amt_yi, 1)}亿 · ${esc(x.start || "")} 起</span></div>
+        ${x.yizi ? `<span class="tag">一字</span>` : ""}<br><span class="small mute">${esc(x.sector)}${x.concept ? " · " + esc(x.concept) : ""} · 成交 ${num(x.amt_yi, 1)}亿 · ${esc(x.start || "")} 起</span>
+        ${x.main_net != null ? `<br><span class="small">主力 <b class="${cls(x.main_net)}">${x.main_net > 0 ? "+" : ""}${x.main_net.toFixed(2)}亿</b>${x.main_pct != null ? `（${x.main_pct}%）` : ""} · 机构${x.pro_n || 0}家</span>` : ""}</div>
         <div class="r"><button class="btn sec" style="padding:6px 10px;font-size:12px" data-ths="${x.code.slice(2)}">同花顺</button></div></div>`).join("");
     h += `</div>`;
   });
@@ -348,12 +349,30 @@ function sbCard(p, M) {
     <div class="small mute" style="margin-top:10px">所属概念（按今天概念内涨停数排）</div>
     <div class="conrow">${(p.concepts || []).map(c => `<span class="secchip con">${esc(c.name)} ${pct(c.ret)} · 涨停${c.lu}（5日${pct(c.ret5)}）</span>`).join("") || `<span class="small mute">无题材概念</span>`}</div>
     ${conLine(p, M)}
+    ${mainBlock(p, M)}
     ${v}
     <details><summary>次日分析：按竞价开盘怎么做</summary>
       <table class="gaptbl"><tr><th>次日竞价</th><th>历史胜率</th><th>平均</th><th>规则</th></tr>${gaps}</table>
       <p class="small mute">开盘涨停买不进；高开超过7%放弃；其余按开盘价买入，同一天低开的优先，最多5只；第3个交易日收盘卖出。收盘价 ${num(p.close)}。</p></details>
     <div class="btns"><button class="btn main" data-ths="${code}">在同花顺打开</button><button class="btn sec" data-copy="${code}">复制代码</button></div>
   </div>`;
+}
+
+function mainBlock(p, M) {
+  const s = M.main_stats || {};
+  const yi = (x) => x == null ? "—" : (x > 0 ? "+" : "") + x.toFixed(2) + "亿";
+  const il = s.inst_low || {}, ih = s.inst_high || {};
+  const many = (p.pro_n || 0) > 20;
+  return `<div class="small mute" style="margin-top:10px">主力</div>
+    <div class="kv">
+      <div><span>今日主力净流入</span><b class="${cls(p.main_net)}">${yi(p.main_net)}</b><span>${p.main_pct == null ? "" : "占成交 " + p.main_pct + "%"}</span></div>
+      <div><span>前5日主力</span><b class="${cls(p.main5)}">${yi(p.main5)}</b></div>
+      <div><span>机构持仓${p.hold_q ? "（" + p.hold_q.slice(2, 4) + "Q" + Math.ceil(+p.hold_q.slice(5, 7) / 3) + "）" : ""}</span><b>${p.pro_n || 0}家</b><span>占流通 ${p.pro_ratio == null ? "—" : p.pro_ratio + "%"}${p.fund_cha ? " · 基金" + esc(p.fund_cha) : ""}</span></div>
+    </div>
+    <p class="small" style="margin:6px 0 0">${many
+      ? `机构超过20家：历史上这类首板胜率 ${(ih.win * 100).toFixed(0)}%、平均 ${pct(ih.mean, 1)}，弱于机构少的（${(il.win * 100).toFixed(0)}%、${pct(il.mean, 1)}）。`
+      : `机构不超过20家：历史上这类首板胜率 ${(il.win * 100).toFixed(0)}%、平均 ${pct(il.mean, 1)}。`}
+      <span class="mute">主力资金净流入的大小，历史上对首板后续涨跌没有帮助（${esc(s.flow_window || "")}，${s.flow_n || 0} 笔），只作参考。</span></p>`;
 }
 
 function conLine(p, M) {
@@ -496,6 +515,7 @@ function renderAbout() {
     <li>第3个交易日收盘卖出</li></ol>
     <p class="small"><b>推荐指数</b>：用 2016–2026 年全部首板训练的打分（看板块5日/当天涨幅、板块排名、个股位置、成交额、市场涨停数和炸板率等），0–100，越高越好；分高/中/低三档，胜率是 2022–2026 年样本外检验的结果。</p>
     <p class="small"><b>概念板块</b>：每只首板显示所属题材概念当天的涨幅、5日涨幅和涨停家数，并标出“行业+概念共振”（所属概念也在超跌反弹）。历史上共振的胜率更高，但概念成分只能用现在的名单回测，所以概念只作为参考标记，不改变选股规则。</p>
+    <p class="small"><b>主力</b>：每只股票显示当天和前5天的主力资金净流入（超大单+大单），以及最近一期季报的专业机构持仓（基金、QFII、社保、券商、保险、信托的家数和占流通股比例、基金增减仓）。回测发现：主力净流入大小对首板后续涨跌没有帮助；机构持仓超过20家的首板反而偏弱。所以主力信息只作参考，不改变选股规则。</p>
     <p class="small"><b>更新时间</b>：收盘后 16:40 左右出名单；次日 9:26 左右用竞价价格更新“买入/放弃”（利雅得时间 4:26）。GitHub 定时可能晚几分钟。</p></div>
   <div class="card"><b>这是什么</b>
     <p>把抖音“狙盘手”的<b>援军战法</b>写成固定规则，每个交易日收盘后自动选股，并按规则<b>模拟买卖、记录真实涨跌</b>。用来观察这个战法到底灵不灵，<b>不是投资建议</b>。</p></div>

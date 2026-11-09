@@ -229,7 +229,20 @@ def r(x, n=4):
 
 
 # --------------------------------------------------------------------------- close-of-day run
-def run_close(P, names, st_codes, out_dir, now, log=print):
+def main_info(code, flows, hold):
+    fl = flows.get(code) or (None, None, None)
+    h = hold.get(code[2:]) or {}
+    num = lambda v: float(v) if v not in (None, "") else None  # noqa: E731
+    return dict(main_net=r(fl[0] / 1e8, 2) if fl[0] is not None else None, main_pct=r(fl[1], 1),
+                main5=r(fl[2] / 1e8, 2) if fl[2] is not None else None,
+                pro_n=int(h["pro_n"]) if h.get("pro_n") else 0, pro_ratio=r(num(h.get("pro_ratio")), 2),
+                pro_chg=r(num(h.get("pro_chg")), 2), fund_cha=h.get("fund_cha") or "", hold_q=h.get("quarter"))
+
+
+def run_close(P, names, st_codes, out_dir, now, log=print, flows=None):
+    import holdings as _h
+    flows = flows or {}
+    hold = _h.load()
     model = load_model()
     T = P.T
     t = T - 1
@@ -308,6 +321,7 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
         item = dict(code=c, name=names.get(c, ""), sector=P.sec_names[P.sec_of[j]], close=r(P.C[t, j], 3),
                     p=r(p, 3), index=idx, tier=tier, **{k: r(v) if isinstance(v, float) else v for k, v in f.items()})
         item.update(P.concept_info(t, j))
+        item.update(main_info(c, flows, hold))
         if f["ruleA"]:
             picks.append(item)
             key = f"{c}|{asof}"
@@ -330,6 +344,9 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
            for s in np.argsort(-P.sec_ret[t])[:8]]
     hot_con, reb_con, n_reb_con = P.concept_board(t)
     ladder, levels, broken = ladder_info(P, t, names, st_codes)
+    for x in ladder:
+        mi = main_info(x["code"], flows, hold)
+        x.update(main_net=mi["main_net"], main_pct=mi["main_pct"], pro_n=mi["pro_n"])
     book["meta"]["last_date"] = asof
     with open(tpath, "w", encoding="utf-8") as fh:
         json.dump(book, fh, ensure_ascii=False, separators=(",", ":"))
@@ -342,7 +359,8 @@ def run_close(P, names, st_codes, out_dir, now, log=print):
                height=max([x["k"] for x in ladder], default=1),
                morning=None,
                model=dict(tiers=model["tiers"], gaps=model["gaps"], bt=model["bt"], tier_cut=model["tier_cut"],
-                          concept_stats=model.get("concept_stats"), ladder=model.get("ladder")))
+                          concept_stats=model.get("concept_stats"), ladder=model.get("ladder"),
+                          main_stats=model.get("main_stats")))
     with open(os.path.join(out_dir, "shouban.json"), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     log(f"首板 {asof}: 首板 {len(evs)} 只，符合规则 {len(picks)} 只，反弹板块 {len(rebound)} 个")
