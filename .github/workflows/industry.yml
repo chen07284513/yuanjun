@@ -22,11 +22,13 @@ jobs:
         run: python -u picker/refresh_industry.py
       - name: 更新机构持仓（季报）
         run: python -u picker/holdings.py
+      - name: 更新概念对照表（实时连板用）
+        run: python -u picker/make_meta.py
       - name: 保存
         run: |
           git config user.name "daily-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add picker/industry_L2.csv.gz picker/concept.csv.gz picker/holdings.csv.gz
+          git add picker/industry_L2.csv.gz picker/concept.csv.gz picker/holdings.csv.gz docs/data/meta.json
           git diff --cached --quiet || git commit -m "industry: $(TZ=Asia/Shanghai date +%F)"
           git pull --rebase --quiet || true
           git push

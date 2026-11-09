@@ -248,31 +248,133 @@ function renderLadder(B) {
   (L.levels || []).forEach(x => lv[x.k] = x);
   const hist = (k) => lv[Math.min(k, 7)] || {};
   const g = L.grid || {};
-  let h = `<div class="banner">回测结论：连板股<b>第二天开盘追买，每个高度平均都是亏的</b>（2板每笔 ${pct(hist(2).r_c2, 1)}、3板 ${pct(hist(3).r_c2, 1)}、4板 ${pct(hist(4).r_c2, 1)}，第二天收盘卖，已扣费）。
+  const D = S.live || { ladder: B.ladder || [], levels: B.levels || [], broken: B.broken || [], broken_count: B.broken_count,
+                        height: B.height, zt_n: (B.market || {}).limit_ups, zb_rate: (B.market || {}).zb_rate };
+  let h = `<div class="card" style="display:flex;align-items:center;gap:10px">
+    <div style="flex:1" class="small">${S.live ? `<b class="up">实时</b> ${esc(S.live.label)}` : `收盘数据：${esc(B.asof)}`}
+      ${S.liveErr ? `<br><span class="down">${esc(S.liveErr)}</span>` : ""}
+      ${S.live ? `<br><a href="#" data-closeview="1" class="small">切回收盘数据</a>` : ""}</div>
+    <button class="btn main" style="flex:0 0 auto;padding:10px 14px" data-live="1" ${S.liveBusy ? "disabled" : ""}>${S.liveBusy ? "获取中…" : "⟳ 实时更新"}</button></div>`;
+  h += `<div class="banner">回测结论：连板股<b>第二天开盘追买，每个高度平均都是亏的</b>（2板每笔 ${pct(hist(2).r_c2, 1)}、3板 ${pct(hist(3).r_c2, 1)}、4板 ${pct(hist(4).r_c2, 1)}，第二天收盘卖，已扣费）。
     我测了 ${g.tested || 561} 种条件组合，没有找到前后两段都稳定赚钱的规则，所以这里<b>只做梯队观察，不给买入推荐</b>。</div>`;
   h += `<div class="card"><div class="grid3">
-    <div><b>${B.height || "—"}板</b><span>最高板</span></div>
-    <div><b>${(B.ladder || []).length}</b><span>连板股（≥2板）</span></div>
-    <div><b>${B.broken_count ?? "—"}</b><span>今日断板</span></div></div>
-    <table style="margin-top:10px"><tr><th>晋级</th><th>今天</th><th>历史平均</th></tr>
-    ${(B.levels || []).map(x => { const hv = hist(x.k).promote; const strong = hv != null && x.rate > hv;
+    <div><b>${D.height || "—"}板</b><span>最高板</span></div>
+    <div><b>${(D.ladder || []).length}</b><span>连板股（≥2板）</span></div>
+    <div><b>${D.broken_count ?? "—"}</b><span>断板</span></div></div>
+    ${S.live ? `<div class="grid3" style="margin-top:8px"><div><b>${D.zt_n}</b><span>涨停</span></div><div><b>${D.zb_n}</b><span>炸板</span></div>
+      <div><b>${(D.zb_rate * 100).toFixed(0)}%</b><span>炸板率</span></div></div>` : ""}
+    <table style="margin-top:10px"><tr><th>晋级</th><th>${S.live ? "当前" : "今天"}</th><th>历史平均</th></tr>
+    ${(D.levels || []).map(x => { const hv = hist(x.k).promote; const strong = hv != null && x.rate > hv;
       return `<tr><td>${x.k === 1 ? "首板" : x.k + "板"} → ${x.k + 1}板</td><td class="${strong ? "up" : "down"}">${x.up}/${x.n} = ${(x.rate * 100).toFixed(0)}%</td>
         <td>${hv == null ? "—" : (hv * 100).toFixed(0) + "%"}</td></tr>`; }).join("")}</table>
-    <p class="small mute">今天晋级率高于历史平均（红色）说明接力情绪偏强，低于（绿色）说明偏弱。</p></div>`;
+    <p class="small mute">晋级率高于历史平均（红色）说明接力情绪偏强，低于（绿色）说明偏弱。${S.live && S.live.intraday ? "盘中数据，收盘前还会变。" : ""}</p>
+    ${S.live && (S.live.hot || []).length ? `<div class="small" style="margin-top:6px"><b>涨停最多的概念</b></div><div class="secchips">${S.live.hot.map(x =>
+      `<span class="secchip con">${esc(x.name)} · 涨停${x.n}</span>`).join("")}</div>` : ""}</div>`;
   const groups = {};
-  (B.ladder || []).forEach(x => (groups[x.k] = groups[x.k] || []).push(x));
+  (D.ladder || []).forEach(x => (groups[x.k] = groups[x.k] || []).push(x));
   Object.keys(groups).map(Number).sort((a, b) => b - a).forEach(k => {
     const hv = hist(k);
     h += `<div class="h2">${k}板（${groups[k].length}只）<span class="small mute" style="font-weight:400"> · 历史：明天晋级 ${hv.promote == null ? "—" : (hv.promote * 100).toFixed(0) + "%"}，开盘追买平均 ${pct(hv.r_c2, 1)}、胜率 ${hv.win_c2 == null ? "—" : (hv.win_c2 * 100).toFixed(0) + "%"}</span></div><div class="card list">`;
     h += groups[k].map(x => `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)}</span>
-        ${x.yizi ? `<span class="tag">一字</span>` : ""}<br><span class="small mute">${esc(x.sector)}${x.concept ? " · " + esc(x.concept) : ""} · 成交 ${num(x.amt_yi, 1)}亿 · ${esc(x.start || "")} 起</span>
-        ${x.main_net != null ? `<br><span class="small">主力 <b class="${cls(x.main_net)}">${x.main_net > 0 ? "+" : ""}${x.main_net.toFixed(2)}亿</b>${x.main_pct != null ? `（${x.main_pct}%）` : ""} · 机构${x.pro_n || 0}家</span>` : ""}</div>
+        ${x.yizi ? `<span class="tag">一字</span>` : ""}<br><span class="small mute">${esc(x.sector)}${x.concept ? " · " + esc(x.concept) : ""} · 成交 ${num(x.amt_yi, 1)}亿${x.start ? " · " + esc(x.start) + " 起" : ""}</span>
+        ${x.fbt ? `<br><span class="small mute">首封 ${esc(x.fbt)} · 炸板 ${x.zbc}次 · 封单 ${num(x.fund_yi, 2)}亿 · 换手 ${num(x.hs, 1)}%${x.zttj ? " · " + esc(x.zttj) : ""}</span>` : ""}
+        ${x.main_net != null ? `<br><span class="small">主力 <b class="${cls(x.main_net)}">${x.main_net > 0 ? "+" : ""}${x.main_net.toFixed(2)}亿</b>${x.main_pct != null ? `（${x.main_pct}%）` : ""}${x.pro_n != null ? " · 机构" + x.pro_n + "家" : ""}</span>` : ""}</div>
         <div class="r"><button class="btn sec" style="padding:6px 10px;font-size:12px" data-ths="${x.code.slice(2)}">同花顺</button></div></div>`).join("");
     h += `</div>`;
   });
-  if ((B.broken || []).length) h += `<details class="card"><summary>今日断板 ${B.broken_count} 只</summary><div class="list">${B.broken.map(x =>
+  if (!(D.ladder || []).length) h += `<div class="card empty">${S.live ? "目前没有连板股" : "当天没有连板股"}</div>`;
+  if ((D.broken || []).length) h += `<details class="card"><summary>断板 ${D.broken_count} 只</summary><div class="list">${D.broken.map(x =>
       `<div class="it"><div class="l"><b>${esc(x.name || x.code.slice(2))}</b> <span class="small mute">${x.code.slice(2)} · 昨天${x.k}板</span></div><div class="r"><b class="${cls(x.chg)}">${pct(x.chg)}</b></div></div>`).join("")}</div></details>`;
   return h;
+}
+
+// ------------------------------------------------------------------ 实时连板（直接从东方财富取数，JSONP）
+function jsonp(url, params, timeout = 9000) {
+  return new Promise((resolve, reject) => {
+    const cb = "yj" + Date.now() + Math.floor(Math.random() * 1e6);
+    const s = document.createElement("script");
+    const qs = new URLSearchParams(Object.assign({}, params, { cb, _: Date.now() }));
+    let done = false;
+    const clean = () => { done = true; clearTimeout(t); try { delete window[cb]; } catch (e) { window[cb] = undefined; } s.remove(); };
+    const t = setTimeout(() => { if (!done) { clean(); reject(new Error("行情接口超时")); } }, timeout);
+    window[cb] = (d) => { clean(); resolve(d); };
+    s.onerror = () => { if (!done) { clean(); reject(new Error("行情接口连接失败")); } };
+    s.referrerPolicy = "no-referrer";
+    s.src = url + "?" + qs.toString();
+    document.head.appendChild(s);
+  });
+}
+const ZTUT = "7eea3edcaed734bea9cbfc24409ed989";
+async function ztPool(name, sort, date) {
+  const d = await jsonp("https://push2ex.eastmoney.com/" + name, { ut: ZTUT, dpt: "wz.ztzt", Pageindex: 0, pagesize: 500, sort, date });
+  return ((d || {}).data || {}).pool || [];
+}
+function bjNow() { const n = new Date(); return new Date(n.getTime() + (n.getTimezoneOffset() + 480) * 60000); }
+const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+const okStock = (c, n) => !/^(688|689|8|4|9)/.test(c) && !/ST|退/.test(n || "");
+const hhmm = (v) => { const s = String(v || "").padStart(6, "0"); return s.slice(0, 2) + ":" + s.slice(2, 4); };
+const pref = (c, m) => (+m === 1 ? "sh" : "sz") + c;
+async function loadMeta() {
+  if (S.meta) return S.meta;
+  try { const r = await fetch("data/meta.json", { cache: "force-cache" }); S.meta = await r.json(); } catch (e) { S.meta = { c: [], m: {} }; }
+  return S.meta;
+}
+
+async function liveUpdate() {
+  if (S.liveBusy) return;
+  S.liveBusy = true; S.liveErr = null; render();
+  try {
+    const now = bjNow();
+    let d = new Date(now), day = null, zt = [];
+    for (let i = 0; i < 8; i++) {
+      const ds = ymd(d);
+      if (d.getDay() !== 0 && d.getDay() !== 6) {
+        zt = await ztPool("getTopicZTPool", "fbt:asc", ds);
+        if (zt.length) { day = ds; break; }
+      }
+      d.setDate(d.getDate() - 1);
+    }
+    if (!day) throw new Error("没有取到涨停数据，请稍后再试");
+    const [yzt, zb, meta] = await Promise.all([ztPool("getYesterdayZTPool", "zs:desc", day), ztPool("getTopicZBPool", "fbt:asc", day), loadMeta()]);
+    zt = zt.filter(x => okStock(x.c, x.n));
+    const zbf = zb.filter(x => okStock(x.c, x.n));
+    const ytf = yzt.filter(x => okStock(x.c, x.n));
+    const ztSet = new Set(zt.map(x => x.c));
+    // concept heat: how many of today's limit-ups belong to each concept
+    const heat = {};
+    zt.forEach(x => (meta.m[x.c] || []).forEach(k => heat[k] = (heat[k] || 0) + 1));
+    const topCon = (c) => { const ks = meta.m[c] || []; let best = null; ks.forEach(k => { if (best == null || (heat[k] || 0) > (heat[best] || 0)) best = k; }); return best == null ? "" : meta.c[best]; };
+    const hot = Object.entries(heat).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => ({ name: meta.c[k], n }));
+    const ladder = zt.filter(x => x.lbc >= 2).sort((a, b) => b.lbc - a.lbc || a.fbt - b.fbt).map(x => ({
+      code: pref(x.c, x.m), name: x.n, k: x.lbc, yizi: x.fbt === 92500 && x.lbt === 92500 && !x.zbc, sector: x.hybk, concept: topCon(x.c),
+      amt_yi: x.amount / 1e8, fbt: hhmm(x.fbt), zbc: x.zbc, fund_yi: x.fund / 1e8, hs: x.hs,
+      zttj: x.zttj ? `${x.zttj.days}天${x.zttj.ct}板` : "" }));
+    const lv = {};
+    ytf.forEach(x => { const k = x.ylbc || 1; lv[k] = lv[k] || { k, n: 0, up: 0 }; lv[k].n++; if (ztSet.has(x.c)) lv[k].up++; });
+    const levels = Object.values(lv).sort((a, b) => a.k - b.k).map(x => Object.assign(x, { rate: x.up / x.n }));
+    const broken = ytf.filter(x => (x.ylbc || 1) >= 2 && !ztSet.has(x.c)).sort((a, b) => b.ylbc - a.ylbc)
+      .map(x => ({ code: pref(x.c, x.m), name: x.n, k: x.ylbc, chg: x.zdp / 100 }));
+    // 主力资金（连板股）
+    if (ladder.length) {
+      try {
+        const secids = ladder.map(x => (x.code.startsWith("sh") ? "1." : "0.") + x.code.slice(2)).join(",");
+        const u = await jsonp("https://push2.eastmoney.com/api/qt/ulist.np/get", { fltt: 2, invt: 2, secids, fields: "f12,f62,f184", ut: "bd1d9ddb04089700cf9c27f6f7426281" });
+        const fl = {}; (((u || {}).data || {}).diff || []).forEach(r => fl[r.f12] = r);
+        ladder.forEach(x => { const r = fl[x.code.slice(2)]; if (r && typeof r.f62 === "number") { x.main_net = r.f62 / 1e8; x.main_pct = typeof r.f184 === "number" ? +r.f184.toFixed(1) : null; } });
+      } catch (e) { /* 主力数据取不到不影响梯队 */ }
+    }
+    const today = ymd(now), hm = now.getHours() * 100 + now.getMinutes();
+    const intraday = day === today && hm >= 915 && hm < 1500;
+    const t = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+    const dlab = `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}`;
+    S.live = { ladder, levels, broken: broken.slice(0, 20), broken_count: broken.length, height: Math.max(1, ...zt.map(x => x.lbc)),
+      zt_n: zt.length, zb_n: zbf.length, zb_rate: zbf.length / Math.max(1, zt.length + zbf.length), hot, intraday,
+      label: day === today ? `${dlab} ${t}（北京时间）${intraday ? "· 交易中" : "· 已收盘"}` : `最近交易日 ${dlab}（今天还没开盘或休市）` };
+  } catch (e) {
+    S.liveErr = "实时更新失败：" + (e.message || e) + "。可以稍后再试。";
+  } finally {
+    S.liveBusy = false; render();
+  }
 }
 
 function renderFirst(B) {
@@ -545,7 +647,8 @@ function render() {
   const L = S.latest;
   const hm = L && L.generated ? L.generated.slice(11) : "";
   if (S.tab === "sb" && S.sb) {
-    $("#sub").textContent = `首板数据 ${S.sb.asof} 收盘` + (S.sb.generated_morning ? ` · 竞价更新 ${S.sb.generated_morning.slice(11)}` : "");
+    $("#sub").textContent = (S.sbView === "ladder" && S.live) ? `连板实时：${S.live.label}` :
+      `首板数据 ${S.sb.asof} 收盘` + (S.sb.generated_morning ? ` · 竞价更新 ${S.sb.generated_morning.slice(11)}` : "");
     $("#app").innerHTML = renderSb();
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
     return;
@@ -559,6 +662,8 @@ function render() {
 }
 
 document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[data-closeview]");
+  if (a) { e.preventDefault(); S.live = null; S.liveErr = null; render(); return; }
   const t = e.target.closest("button"); if (!t) return;
   const d = t.dataset;
   if (d.tab) { S.tab = d.tab; try { localStorage.setItem("tab", d.tab); } catch (x) {} render(); window.scrollTo(0, 0); }
@@ -567,6 +672,7 @@ document.addEventListener("click", (e) => {
   else if (d.bf) { S.paperBackfill = !S.paperBackfill; render(); }
   else if (d.bg) { S.btGroup = d.bg; render(); }
   else if (d.sv) { S.sbView = d.sv; render(); }
+  else if (d.live) liveUpdate();
   else if (d.ths) openThs(d.ths);
   else if (d.copy) onlyCopy(d.copy);
 });
