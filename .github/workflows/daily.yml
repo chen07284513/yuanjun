@@ -2,11 +2,13 @@ name: daily-pick
 
 on:
   schedule:
-    - cron: "26 1 * * 1-5"   # 北京时间 09:26 首板：用竞价价格更新买入建议
-    - cron: "33 1 * * 1-5"   # 北京时间 09:33 首板竞价备份
-    - cron: "38 6 * * 1-5"   # 北京时间 14:38 盘中选股（尾盘前出结果）
-    - cron: "46 6 * * 1-5"   # 北京时间 14:46 备份（第一次被 GitHub 延迟时补上）
-    - cron: "40 8 * * 1-5"   # 北京时间 16:40 收盘后：更新模拟盘、出首板名单
+    # GitHub 的定时经常晚几十分钟，所以提前启动、在任务里等到准点再跑（公开仓库不耗费用）
+    - cron: "10 0 * * 1-5"   # 北京 08:10 启动 → 等到 09:26 首板竞价更新
+    - cron: "40 0 * * 1-5"   # 备份
+    - cron: "20 5 * * 1-5"   # 北京 13:20 启动 → 等到 14:38 盘中选股
+    - cron: "50 5 * * 1-5"   # 备份
+    - cron: "30 7 * * 1-5"   # 北京 15:30 启动 → 等到 16:40 收盘后更新
+    - cron: "5 8 * * 1-5"    # 备份
   workflow_dispatch:          # 手动运行
   push:
     branches: [main]
@@ -24,7 +26,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 150
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -41,6 +43,20 @@ jobs:
         if: github.event_name != 'push'
         run: pip install -r requirements.txt
 
+      - name: 等到准点
+        if: github.event_name == 'schedule'
+        env:
+          SCHED: ${{ github.event.schedule }}
+        run: |
+          case "$SCHED" in
+            "10 0 * * 1-5"|"40 0 * * 1-5") T="01:26" ;;
+            "20 5 * * 1-5"|"50 5 * * 1-5") T="06:38" ;;
+            *) T="08:40" ;;
+          esac
+          target=$(date -u -d "today $T" +%s); now=$(date -u +%s)
+          if [ "$now" -lt "$target" ]; then echo "sleep $((target-now))s until $T UTC"; sleep $((target-now)); else echo "already past $T UTC"; fi
+          git pull --rebase --quiet origin main || true
+
       - name: 选股并更新模拟盘
         if: github.event_name != 'push'
         run: python -u picker/daily.py docs/data
@@ -52,7 +68,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data picker/names.json
           git diff --cached --quiet || git commit -m "data: $(TZ=Asia/Shanghai date +%F)"
-          git pull --rebase --quiet || true
+          git pull --rebase --quiet origin main || true
           git push
 
       - uses: actions/configure-pages@v5
